@@ -39,7 +39,20 @@ public class SecurityConfig {
             .cors(cors -> cors.configure(http))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/", "/index.html", "/static/**", "/assets/**", "/*.js", "/*.css", "/favicon.ico").permitAll()
+                .requestMatchers(
+                    "/", 
+                    "/index.html", 
+                    "/css/**", 
+                    "/js/**", 
+                    "/static/**", 
+                    "/assets/**", 
+                    "/*.js", 
+                    "/*.css", 
+                    "/*.ico", 
+                    "/*.png", 
+                    "/*.jpg", 
+                    "/favicon.ico"
+                ).permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/public/**").permitAll()
                 .anyRequest().authenticated()
