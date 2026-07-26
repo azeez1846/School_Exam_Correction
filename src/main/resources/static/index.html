@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GradePulse AI - School Exam Correction & Evaluation Platform</title>
+    <meta name="description" content="AI-Powered Exam Paper OCR Correction & Free LLM Evaluation Suite for Teachers">
+    
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome / Lucide Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    
+    <!-- Chart.js for analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body class="light-theme">
+
+    <!-- LOGIN & REGISTER MODAL / OVERLAY -->
+    <div id="auth-modal" class="auth-overlay">
+        <div class="auth-card glass-panel">
+            <div class="auth-header">
+                <div class="brand-badge">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </div>
+                <h2>GradePulse AI</h2>
+                <p>Intelligent OCR Paper Evaluation for Educators</p>
+            </div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form active">
+                <div class="form-group">
+                    <label for="login-username"><i class="fa-regular fa-envelope"></i> Email / Username</label>
+                    <input type="text" id="login-username" value="teacher@school.edu" required placeholder="teacher@school.edu">
+                </div>
+                <div class="form-group">
+                    <label for="login-password"><i class="fa-solid fa-lock"></i> Password</label>
+                    <input type="password" id="login-password" value="password123" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block shadow-pulse">
+                    <span>Sign In to Studio</span>
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </form>
+
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form">
+                <div class="form-group">
+                    <label for="reg-fullname"><i class="fa-regular fa-user"></i> Full Name</label>
+                    <input type="text" id="reg-fullname" placeholder="Prof. Eleanor Vance">
+                </div>
+                <div class="form-group">
+                    <label for="reg-username"><i class="fa-regular fa-envelope"></i> Email / Username</label>
+                    <input type="text" id="reg-username" required placeholder="teacher@school.edu">
+                </div>
+                <div class="form-group">
+                    <label for="reg-password"><i class="fa-solid fa-lock"></i> Password</label>
+                    <input type="password" id="reg-password" required placeholder="••••••••">
+                </div>
+                <button type="submit" class="btn btn-primary btn-block">
+                    <span>Create Educator Account</span>
+                    <i class="fa-solid fa-user-plus"></i>
+                </button>
+            </form>
+
+            <div class="auth-toggle">
+                <span id="auth-toggle-btn">Need an account? Sign Up</span>
+            </div>
+
+            <div class="quick-demo-box">
+                <div class="quick-demo-title"><i class="fa-solid fa-bolt"></i> 1-Click Quick Demo Login</div>
+                <button type="button" id="btn-quick-login" class="btn btn-secondary btn-sm btn-block">
+                    <i class="fa-solid fa-user-check"></i> Login as Prof. Eleanor Vance (Demo)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MAIN APP WRAPPER -->
+    <div id="app-wrapper" class="app-container hidden">
+        
+        <!-- SIDEBAR NAVIGATION -->
+        <aside class="sidebar glass-panel">
+            <div class="sidebar-brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-award"></i>
+                </div>
+                <div class="brand-text">
+                    <h1>GradePulse</h1>
+                    <span class="version-tag">AI Free-Tier</span>
+                </div>
+            </div>
+
+            <nav class="nav-menu">
+                <button class="nav-item active" data-view="dashboard">
+                    <i class="fa-solid fa-chart-line"></i>
+                    <span>Dashboard</span>
+                </button>
+                <button class="nav-item" data-view="single-grading">
+                    <i class="fa-solid fa-file-signature"></i>
+                    <span>Single Paper Studio</span>
+                </button>
+                <button class="nav-item" data-view="bulk-grading">
+                    <i class="fa-solid fa-layer-group"></i>
+                    <span>Bulk Correction Hub</span>
+                </button>
+                <button class="nav-item" data-view="exams">
+                    <i class="fa-solid fa-book-bookmark"></i>
+                    <span>Exams & Rubrics</span>
+                </button>
+                <button class="nav-item" data-view="history">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                    <span>Paper History</span>
+                </button>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="llm-status-pill shadow-sm" id="llm-active-indicator">
+                    <i class="fa-solid fa-microchip text-indigo"></i>
+                    <div class="pill-info">
+                        <span class="pill-title">Active AI Model</span>
+                        <span class="pill-val" id="active-model-name">Gemini 1.5 Flash</span>
+                    </div>
+                </div>
+                <button id="btn-open-settings" class="btn btn-light btn-block btn-sm mt-2">
+                    <i class="fa-solid fa-sliders"></i> AI Settings & Keys
+                </button>
+            </div>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="main-content">
+            
+            <!-- TOP BAR HEADER -->
+            <header class="top-header glass-panel">
+                <div class="header-search">
+                    <i class="fa-solid fa-magnifying-glass"></i>
+                    <input type="text" id="global-search" placeholder="Search student name, roll number, subject or exam...">
+                </div>
+
+                <div class="header-actions">
+                    <div class="model-select-compact">
+                        <label for="global-model-selector"><i class="fa-solid fa-brain"></i> Model:</label>
+                        <select id="global-model-selector" class="form-select-sm">
+                            <option value="gemini" selected>Google Gemini 1.5 Flash (Free Tier)</option>
+                            <option value="gemini-2.5">Google Gemini 2.5 Flash (Free Tier)</option>
+                            <option value="groq">Groq Llama 3.2 Vision (Free Tier)</option>
+                            <option value="huggingface">Hugging Face Vision (Free Tier)</option>
+                            <option value="openrouter">OpenRouter Free Tier</option>
+                            <option value="local">Local OCR Rule Engine (Offline)</option>
+                        </select>
+                    </div>
+
+                    <div class="user-profile-dropdown">
+                        <div class="avatar-circle" id="user-avatar">EV</div>
+                        <div class="user-info">
+                            <span class="user-name" id="user-display-name">Prof. Eleanor Vance</span>
+                            <span class="user-role" id="user-display-role">Senior Educator</span>
+                        </div>
+                        <button id="btn-logout" class="btn-icon" title="Logout">
+                            <i class="fa-solid fa-right-from-bracket"></i>
+                        </button>
+                    </div>
+                </div>
+            </header>
+
+            <!-- VIEW CONTAINER -->
+            <div id="view-container" class="content-body">
+
+                <!-- 1. DASHBOARD VIEW -->
+                <section id="view-dashboard" class="view-section active">
+                    <div class="page-header">
+                        <div>
+                            <h2>Executive Evaluation Dashboard</h2>
+                            <p class="text-muted">Real-time stats, AI grading metrics, and class performance overview</p>
+                        </div>
+                        <button class="btn btn-primary" onclick="switchView('single-grading')">
+                            <i class="fa-solid fa-plus"></i> Grade New Paper
+                        </button>
+                    </div>
+
+                    <!-- METRICS CARDS -->
+                    <div class="metrics-grid">
+                        <div class="metric-card glass-card">
+                            <div class="card-icon bg-indigo-light text-indigo">
+                                <i class="fa-solid fa-file-circle-check"></i>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Evaluated Papers</span>
+                                <h3 id="stat-total-completed">12</h3>
+                                <span class="metric-sub text-emerald"><i class="fa-solid fa-arrow-trend-up"></i> 100% processed</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass-card">
+                            <div class="card-icon bg-emerald-light text-emerald">
+                                <i class="fa-solid fa-chart-pie"></i>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Class Average Score</span>
+                                <h3 id="stat-class-average">84.5%</h3>
+                                <span class="metric-sub text-emerald"><i class="fa-solid fa-circle-check"></i> Above target threshold</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass-card">
+                            <div class="card-icon bg-amber-light text-amber">
+                                <i class="fa-solid fa-user-graduate"></i>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Pass Percentage</span>
+                                <h3 id="stat-pass-rate">91.6%</h3>
+                                <span class="metric-sub text-slate"><i class="fa-solid fa-check"></i> Standard grading curve</span>
+                            </div>
+                        </div>
+
+                        <div class="metric-card glass-card">
+                            <div class="card-icon bg-rose-light text-rose">
+                                <i class="fa-solid fa-folder-open"></i>
+                            </div>
+                            <div class="metric-content">
+                                <span class="metric-label">Active Exams</span>
+                                <h3 id="stat-total-exams">2</h3>
+                                <span class="metric-sub text-slate">Math & Science</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CHARTS & RECENT ACTIVITY -->
+                    <div class="dashboard-grid mt-4">
+                        <div class="glass-card p-4">
+                            <div class="card-header">
+                                <h3>Grade Distribution Curve</h3>
+                                <span class="badge badge-indigo">Class Breakdown</span>
+                            </div>
+                            <div class="chart-container">
+                                <canvas id="gradeDistributionChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="glass-card p-4">
+                            <div class="card-header">
+                                <h3>Recent Paper Evaluations</h3>
+                                <button class="btn btn-link btn-sm" onclick="switchView('history')">View All</button>
+                            </div>
+                            <div class="table-responsive mt-2">
+                                <table class="table" id="dashboard-recent-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Student</th>
+                                            <th>Exam</th>
+                                            <th>Score</th>
+                                            <th>Grade</th>
+                                            <th>Status</th>
+                                            <th>Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dashboard-recent-tbody">
+                                        <!-- Rendered via JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 2. SINGLE PAPER EVALUATION STUDIO -->
+                <section id="view-single-grading" class="view-section">
+                    <div class="page-header">
+                        <div>
+                            <h2>Single Paper OCR Evaluation Studio</h2>
+                            <p class="text-muted">Upload a student's answer sheet image/document for AI instant grading</p>
+                        </div>
+                    </div>
+
+                    <div class="grading-studio-grid">
+                        
+                        <!-- LEFT COLUMN: INPUT FORM & PAPER PREVIEW -->
+                        <div class="glass-card p-4">
+                            <h3><i class="fa-solid fa-cloud-arrow-up text-indigo"></i> Upload Answer Paper</h3>
+                            
+                            <form id="single-upload-form" class="mt-3">
+                                <div class="form-group">
+                                    <label for="single-exam-select">Select Exam & Subject</label>
+                                    <select id="single-exam-select" class="form-select" required>
+                                        <!-- Options populated dynamically -->
+                                    </select>
+                                </div>
+
+                                <div class="form-row">
+                                    <div class="form-group col">
+                                        <label for="student-name-input">Student Full Name</label>
+                                        <input type="text" id="student-name-input" class="form-control" placeholder="e.g. Sophia Chen" required>
+                                    </div>
+                                    <div class="form-group col">
+                                        <label for="student-roll-input">Roll / ID Number</label>
+                                        <input type="text" id="student-roll-input" class="form-control" placeholder="e.g. MATH-101" required>
+                                    </div>
+                                </div>
+
+                                <!-- DROPZONE -->
+                                <div class="dropzone-area" id="single-dropzone">
+                                    <input type="file" id="single-paper-file" accept="image/*,.pdf,.txt" hidden>
+                                    <div class="dropzone-content">
+                                        <i class="fa-solid fa-file-arrow-up dropzone-icon"></i>
+                                        <h4>Drag & Drop Answer Sheet Image / PDF</h4>
+                                        <p class="text-muted">Supports JPG, PNG, WEBP, PDF or TXT papers</p>
+                                        <button type="button" class="btn btn-secondary btn-sm mt-2" onclick="document.getElementById('single-paper-file').click()">
+                                            Browse Files
+                                        </button>
+                                    </div>
+                                    <div id="file-chosen-preview" class="file-preview-pill hidden">
+                                        <i class="fa-solid fa-file-image"></i>
+                                        <span id="chosen-filename">paper_sheet.jpg</span>
+                                        <i class="fa-solid fa-xmark remove-file" id="btn-remove-file"></i>
+                                    </div>
+                                </div>
+
+                                <!-- SAMPLE PAPER FAST LOAD BUTTONS -->
+                                <div class="sample-papers-box mt-3">
+                                    <span class="sample-title"><i class="fa-solid fa-wand-magic-sparkles"></i> Or Load Sample Student Exam:</span>
+                                    <div class="sample-btns">
+                                        <button type="button" class="btn btn-outline btn-xs" id="btn-sample-math">Math Exam Paper</button>
+                                        <button type="button" class="btn btn-outline btn-xs" id="btn-sample-science">Science Exam Paper</button>
+                                    </div>
+                                </div>
+
+                                <div class="form-group mt-3">
+                                    <label for="ocr-override-text">OCR Extracted Text (Editable Preview)</label>
+                                    <textarea id="ocr-override-text" rows="6" class="form-control font-mono" placeholder="OCR text extracted from paper image will appear here..."></textarea>
+                                </div>
+
+                                <button type="submit" class="btn btn-primary btn-block mt-3 shadow-pulse" id="btn-evaluate-single">
+                                    <i class="fa-solid fa-robot"></i> Run AI OCR Evaluation
+                                </button>
+                            </form>
+                        </div>
+
+                        <!-- RIGHT COLUMN: EVALUATION RESULT CARD -->
+                        <div class="glass-card p-4" id="evaluation-result-container">
+                            <div class="empty-state" id="eval-empty-state">
+                                <i class="fa-solid fa-clipboard-check empty-icon"></i>
+                                <h3>No Paper Evaluated Yet</h3>
+                                <p class="text-muted">Upload an answer paper on the left or select a sample paper to generate marks and custom feedback.</p>
+                            </div>
+
+                            <!-- LIVE EVALUATION SCORECARD (Hidden until evaluated) -->
+                            <div id="eval-scorecard" class="eval-scorecard hidden">
+                                <div class="scorecard-header">
+                                    <div>
+                                        <span class="badge badge-emerald" id="res-pass-badge">PASSED</span>
+                                        <h3 id="res-student-name">Sophia Chen</h3>
+                                        <p class="text-muted" id="res-exam-details">Grade 10 Mathematics Final Evaluation • ID: MATH-101</p>
+                                    </div>
+                                    <div class="score-circle-badge shadow-sm">
+                                        <span class="score-val" id="res-score-val">92.0</span>
+                                        <span class="score-total" id="res-score-total">/ 100</span>
+                                        <span class="score-grade" id="res-grade-val">Grade A+</span>
+                                    </div>
+                                </div>
+
+                                <!-- RUBRICS BREAKDOWN TABLE -->
+                                <div class="rubric-section mt-4">
+                                    <h4 class="section-subtitle"><i class="fa-solid fa-list-check text-indigo"></i> Rubric Criterion Scoring</h4>
+                                    <div id="res-rubrics-list" class="rubrics-grid mt-2">
+                                        <!-- Rendered via JS -->
+                                    </div>
+                                </div>
+
+                                <!-- STRENGTHS & IMPROVEMENT AREAS -->
+                                <div class="feedback-grid mt-4">
+                                    <div class="feedback-box strengths-box p-3">
+                                        <h4><i class="fa-solid fa-circle-check text-emerald"></i> Key Strengths</h4>
+                                        <ul id="res-strengths-list" class="styled-list">
+                                            <!-- Rendered via JS -->
+                                        </ul>
+                                    </div>
+
+                                    <div class="feedback-box improvements-box p-3">
+                                        <h4><i class="fa-solid fa-triangle-exclamation text-amber"></i> Improvement Areas</h4>
+                                        <ul id="res-improvements-list" class="styled-list">
+                                            <!-- Rendered via JS -->
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <!-- CUSTOM DETAILED WRITTEN FEEDBACK -->
+                                <div class="custom-feedback-card mt-4 p-3 bg-light-indigo rounded">
+                                    <h4><i class="fa-solid fa-comment-dots text-indigo"></i> Teacher's Custom Feedback Summary</h4>
+                                    <p id="res-custom-feedback" class="mt-2 text-slate-dark">
+                                        <!-- Rendered via JS -->
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+                </section>
+
+                <!-- 3. BULK CORRECTION HUB -->
+                <section id="view-bulk-grading" class="view-section">
+                    <div class="page-header">
+                        <div>
+                            <h2>Bulk Correction & Batch Processing Hub</h2>
+                            <p class="text-muted">Upload an entire batch of student papers or ZIP archive for automated evaluation</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-4">
+                        <form id="bulk-upload-form">
+                            <div class="form-row">
+                                <div class="form-group col">
+                                    <label for="bulk-exam-select">Select Exam Target</label>
+                                    <select id="bulk-exam-select" class="form-select" required>
+                                        <!-- Exam options populated dynamically -->
+                                    </select>
+                                </div>
+                                <div class="form-group col">
+                                    <label for="bulk-model-select">AI Evaluation Engine</label>
+                                    <select id="bulk-model-select" class="form-select">
+                                        <option value="gemini">Google Gemini 1.5 Flash (Free Tier)</option>
+                                        <option value="groq">Groq Llama 3.2 Vision (Free Tier)</option>
+                                        <option value="local">Local OCR Rule Engine (Offline Batch)</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <!-- BULK DROPZONE -->
+                            <div class="dropzone-area" id="bulk-dropzone">
+                                <input type="file" id="bulk-files-input" multiple accept="image/*,.pdf,.txt" hidden>
+                                <div class="dropzone-content">
+                                    <i class="fa-solid fa-boxes-stacked dropzone-icon text-indigo"></i>
+                                    <h4>Upload Multiple Student Papers or Class Roster ZIP</h4>
+                                    <p class="text-muted">Select 2 to 50 student answer papers at once</p>
+                                    <button type="button" class="btn btn-primary btn-sm mt-2" onclick="document.getElementById('bulk-files-input').click()">
+                                        Select Files for Batch
+                                    </button>
+                                </div>
+                                <div id="bulk-file-counter" class="mt-2 text-indigo font-weight-bold hidden">
+                                    <i class="fa-solid fa-file-circle-plus"></i> <span id="bulk-file-count-text">0 files selected</span>
+                                </div>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-block mt-3 shadow-pulse" id="btn-start-bulk">
+                                <i class="fa-solid fa-play"></i> Launch Batch OCR Evaluation Process
+                            </button>
+                        </form>
+
+                        <!-- BATCH PROGRESS BAR -->
+                        <div id="batch-progress-box" class="mt-4 p-3 bg-light rounded hidden">
+                            <div class="progress-header">
+                                <span class="progress-title"><i class="fa-solid fa-spinner fa-spin text-indigo"></i> Processing Batch Queue...</span>
+                                <span id="progress-status-val">0 / 0 Completed</span>
+                            </div>
+                            <div class="progress-bar-container mt-2">
+                                <div id="progress-bar-fill" class="progress-bar-fill" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- BATCH RESULTS TABLE -->
+                        <div id="bulk-results-section" class="mt-4 hidden">
+                            <div class="d-flex justify-between align-center mb-3">
+                                <h3>Batch Evaluation Summary</h3>
+                                <button class="btn btn-success btn-sm" id="btn-export-csv">
+                                    <i class="fa-solid fa-file-csv"></i> Export Roster Grades CSV
+                                </button>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table" id="bulk-results-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Roll No</th>
+                                            <th>Student Name</th>
+                                            <th>Marks Obtained</th>
+                                            <th>Percentage</th>
+                                            <th>Grade</th>
+                                            <th>Result Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="bulk-results-tbody">
+                                        <!-- Rendered dynamically -->
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 4. EXAMS & RUBRICS MANAGER -->
+                <section id="view-exams" class="view-section">
+                    <div class="page-header">
+                        <div>
+                            <h2>Exams & Evaluation Rubrics Manager</h2>
+                            <p class="text-muted">Create exams, configure subjects, answer keys, and weighted rubrics</p>
+                        </div>
+                        <button class="btn btn-primary" id="btn-modal-create-exam">
+                            <i class="fa-solid fa-circle-plus"></i> Create New Exam
+                        </button>
+                    </div>
+
+                    <div class="exams-grid" id="exams-cards-container">
+                        <!-- Exam cards rendered via JS -->
+                    </div>
+                </section>
+
+                <!-- 5. PAPER HISTORY -->
+                <section id="view-history" class="view-section">
+                    <div class="page-header">
+                        <div>
+                            <h2>Evaluated Paper History & Archives</h2>
+                            <p class="text-muted">Search, inspect, and export all past corrected answer papers</p>
+                        </div>
+                    </div>
+
+                    <div class="glass-card p-4">
+                        <div class="table-responsive">
+                            <table class="table" id="history-full-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Student Name</th>
+                                        <th>Roll Number</th>
+                                        <th>Exam</th>
+                                        <th>Score</th>
+                                        <th>Grade</th>
+                                        <th>AI Model</th>
+                                        <th>Status</th>
+                                        <th>Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="history-full-tbody">
+                                    <!-- Rendered dynamically -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settings-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-panel">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-sliders text-indigo"></i> Free Tier LLM Provider Settings</h3>
+                <button class="btn-close" id="btn-close-settings"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted">Configure free tier API keys or use the built-in offline engine.</p>
+
+                <div class="form-group mt-3">
+                    <label for="setting-gemini-key">Google Gemini Free API Key (aistudio.google.com)</label>
+                    <input type="password" id="setting-gemini-key" class="form-control" placeholder="AIzaSy... (Optional)">
+                </div>
+
+                <div class="form-group">
+                    <label for="setting-groq-key">Groq API Key (console.groq.com)</label>
+                    <input type="password" id="setting-groq-key" class="form-control" placeholder="gsk_... (Optional)">
+                </div>
+
+                <div class="form-group">
+                    <label for="setting-openrouter-key">OpenRouter API Key (openrouter.ai)</label>
+                    <input type="password" id="setting-openrouter-key" class="form-control" placeholder="sk-or-... (Optional)">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="btn-cancel-settings">Cancel</button>
+                <button class="btn btn-primary" id="btn-save-settings">Save API Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- CREATE EXAM MODAL -->
+    <div id="create-exam-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-panel">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-plus-circle text-indigo"></i> Create New Exam & Rubric</h3>
+                <button class="btn-close" id="btn-close-create-exam"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="new-exam-form">
+                    <div class="form-group">
+                        <label for="new-exam-title">Exam Title</label>
+                        <input type="text" id="new-exam-title" class="form-control" placeholder="e.g. Grade 11 Chemistry Term Test" required>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group col">
+                            <label for="new-exam-subject">Subject</label>
+                            <input type="text" id="new-exam-subject" class="form-control" placeholder="Chemistry" required>
+                        </div>
+                        <div class="form-group col">
+                            <label for="new-exam-marks">Total Marks</label>
+                            <input type="number" id="new-exam-marks" class="form-control" value="100" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="new-exam-instructions">Instructions & Answer Key</label>
+                        <textarea id="new-exam-instructions" rows="3" class="form-control" placeholder="Key formula definitions and grading criteria..."></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Save Exam</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application JavaScript -->
+    <script src="/js/api.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>
