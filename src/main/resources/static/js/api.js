@@ -124,7 +124,7 @@ class ApiClient {
     async processEvaluation(submissionId, providerKey, modelName, ocrTextOverride) {
         return await this.request('/evaluations/process', {
             method: 'POST',
-            body: JSON.stringify({ submissionId, providerKey, modelName, ocrTextOverride })
+            body: JSON.stringify({ submissionId, providerKey, modelName, ocrTextOverride, useVisionModel: true })
         });
     }
 
@@ -132,9 +132,31 @@ class ApiClient {
         return await this.request(`/evaluations/submission/${submissionId}`);
     }
 
+    async overrideEvaluation(submissionId, rubricBreakdown, totalMarksObtained, teacherNotes) {
+        return await this.request(`/evaluations/${submissionId}/override`, {
+            method: 'POST',
+            body: JSON.stringify({ submissionId, rubricBreakdown, totalMarksObtained, teacherNotes })
+        });
+    }
+
+    async submitBulkPdf(formData) {
+        return await this.request('/submissions/bulk-pdf', {
+            method: 'POST',
+            body: formData
+        });
+    }
+
     // Analytics & Settings
     async getDashboardStats() {
         return await this.request('/analytics/dashboard');
+    }
+
+    async getItemAnalysis(examId) {
+        return await this.request(`/analytics/exam/${examId}/item-analysis`);
+    }
+
+    async getMisconceptionClusters(examId) {
+        return await this.request(`/analytics/exam/${examId}/misconceptions`);
     }
 
     async getLlmConfigs() {

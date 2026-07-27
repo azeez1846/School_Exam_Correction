@@ -95,4 +95,91 @@ public class LlmEvaluationServiceTest {
         assertNotNull(dto.getDetailedFeedback());
         verify(submissionRepository, times(1)).save(any());
     }
+
+    @Test
+    void testOverrideEvaluation_Success() {
+        EvaluationResult existingResult = EvaluationResult.builder()
+                .id(99L)
+                .submissionId(1L)
+                .totalMarksObtained(70.0)
+                .maxMarks(100.0)
+                .percentageScore(70.0)
+                .grade("B")
+                .isPassed("PASSED")
+                .build();
+
+        when(resultRepository.findBySubmissionId(1L)).thenReturn(Optional.of(existingResult));
+        when(submissionRepository.findById(1L)).thenReturn(Optional.of(sampleSubmission));
+        when(examRepository.findById(10L)).thenReturn(Optional.of(sampleExam));
+
+        OverrideEvaluationRequest overrideReq = new OverrideEvaluationRequest(
+                1L,
+                List.of(new RubricItemScore("Accuracy", 45.0, 50.0, "Good job"), new RubricItemScore("Reasoning", 48.0, 50.0, "Excellent")),
+                93.0,
+                "Overridden score based on re-check."
+        );
+
+        EvaluationDetailDto dto = evaluationService.overrideEvaluation(overrideReq);
+
+        assertNotNull(dto);
+        assertEquals(93.0, dto.getTotalMarksObtained());
+        assertEquals(93.0, dto.getPercentageScore());
+        assertEquals("A+", dto.getGrade());
+        assertTrue(dto.getIsTeacherOverridden());
+        assertEquals("Overridden score based on re-check.", dto.getTeacherNotes());
+    }
+
+    @Test
+    void testExportCsvGradebook_Success() {
+        EvaluationResult existingResult = EvaluationResult.builder()
+                .id(99L)
+                .submissionId(1L)
+                .totalMarksObtained(85.0)
+                .maxMarks(100.0)
+                .percentageScore(85.0)
+                .grade("A")
+                .isPassed("PASSED")
+                .isTeacherOverridden(false)
+                .build();
+
+        when(examRepository.findById(10L)).thenReturn(Optional.of(sampleExam));
+        when(submissionRepository.findByExamId(10L)).thenReturn(List.of(sampleSubmission));
+        when(resultRepository.findBySubmissionId(1L)).thenReturn(Optional.of(existingResult));
+
+        String csv = evaluationService.exportCsvGradebook(10L);
+
+        assertNotNull(csv);
+        assertTrue(csv.contains("Sophia Chen"));
+        assertTrue(csv.contains("MATH-101"));
+        assertTrue(csv.contains("Mathematics Exam"));
+        assertTrue(csv.contains("85.0"));
+    }
+
+    @Test
+    void testGenerateReportCardHtml_Success() {
+        EvaluationResult existingResult = EvaluationResult.builder()
+                .id(99L)
+                .submissionId(1L)
+                .totalMarksObtained(88.0)
+                .maxMarks(100.0)
+                .percentageScore(88.0)
+                .grade("A")
+                .isPassed("PASSED")
+                .detailedFeedback("Excellent reasoning overall.")
+                .isTeacherOverridden(true)
+                .teacherNotes("Verified manually by examiner.")
+                .build();
+
+        when(resultRepository.findBySubmissionId(1L)).thenReturn(Optional.of(existingResult));
+        when(submissionRepository.findById(1L)).thenReturn(Optional.of(sampleSubmission));
+        when(examRepository.findById(10L)).thenReturn(Optional.of(sampleExam));
+
+        String html = evaluationService.generateReportCardHtml(1L);
+
+        assertNotNull(html);
+        assertTrue(html.contains("Official Academic Evaluation Report"));
+        assertTrue(html.contains("Sophia Chen"));
+        assertTrue(html.contains("88.0 / 100.0"));
+        assertTrue(html.contains("Verified manually by examiner."));
+    }
 }

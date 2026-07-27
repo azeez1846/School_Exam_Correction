@@ -267,6 +267,24 @@
                                 </table>
                             </div>
                         </div>
+
+                        <!-- CLASS MISCONCEPTION & ITEM ANALYSIS SECTION -->
+                        <div class="glass-card p-4 mt-4">
+                            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:15px;">
+                                <div>
+                                    <h3><i class="fa-solid fa-chart-pie text-indigo"></i> Class Misconception & Rubric Item Analysis</h3>
+                                    <p class="text-muted" style="margin:0;">Identify class-wide weak points, question difficulty ratings, and AI revision recommendations</p>
+                                </div>
+                                <div>
+                                    <select id="analysis-exam-select" class="form-select-sm" style="min-width:220px;">
+                                        <option value="">Select Exam for Item Analysis...</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="item-analysis-container" class="item-analysis-box">
+                                <p class="text-muted text-center p-3">Select an exam from the dropdown above to view criterion difficulty breakdown and class-wide error clusters.</p>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -397,6 +415,19 @@
                                         <!-- Rendered via JS -->
                                     </p>
                                 </div>
+
+                                <!-- TEACHER ACTION BAR (OVERRIDE, CSV EXPORT, REPORT CARD) -->
+                                <div class="action-bar-eval mt-4 p-3 glass-panel rounded d-flex flex-wrap gap-2" style="display:flex; gap:10px; flex-wrap:wrap;">
+                                    <button type="button" class="btn btn-warning btn-sm" id="btn-open-override">
+                                        <i class="fa-solid fa-pen-to-square"></i> Edit / Override Marks
+                                    </button>
+                                    <button type="button" class="btn btn-outline btn-sm" id="btn-export-csv">
+                                        <i class="fa-solid fa-file-csv text-emerald"></i> Download Exam Gradebook (CSV)
+                                    </button>
+                                    <button type="button" class="btn btn-primary btn-sm" id="btn-print-report">
+                                        <i class="fa-solid fa-print"></i> Printable Report Card
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -451,6 +482,25 @@
                                 <i class="fa-solid fa-play"></i> Launch Batch OCR Evaluation Process
                             </button>
                         </form>
+
+                        <!-- BATCH MULTI-PAGE PDF SPLITTER CARD -->
+                        <div class="pdf-splitter-card p-4 mt-4 glass-panel rounded border-left-indigo" style="border-left: 4px solid #4f46e5;">
+                            <h3><i class="fa-solid fa-file-pdf text-rose"></i> Multi-Page PDF Scan Splitter & Auto-Roll Detector</h3>
+                            <p class="text-muted">Upload a multi-page scanned PDF file containing student answer sheets. Pages will be automatically split, student IDs detected, and graded.</p>
+                            <form id="bulk-pdf-form" class="mt-3">
+                                <div class="form-row">
+                                    <div class="form-group col">
+                                        <label for="pdf-exam-select">Exam Target</label>
+                                        <select id="pdf-exam-select" class="form-select" required></select>
+                                    </div>
+                                    <div class="form-group col">
+                                        <label for="pdf-file-input">Multi-page PDF File</label>
+                                        <input type="file" id="pdf-file-input" accept=".pdf" class="form-control" required>
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-secondary btn-block mt-2"><i class="fa-solid fa-scissors"></i> Split PDF Pages & Process Batch</button>
+                            </form>
+                        </div>
 
                         <!-- BATCH PROGRESS BAR -->
                         <div id="batch-progress-box" class="mt-4 p-3 bg-light rounded hidden">
@@ -608,6 +658,29 @@
                     <button type="submit" class="btn btn-primary btn-block">Save Exam</button>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- TEACHER OVERRIDE MODAL -->
+    <div id="override-modal" class="modal-overlay hidden">
+        <div class="modal-card glass-panel" style="max-width: 600px;">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-pen-to-square text-warning"></i> Override Evaluation Marks</h3>
+                <button class="btn-close" id="btn-close-override"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="override-form" class="p-3">
+                <div id="override-rubrics-container" class="form-group mb-3">
+                    <!-- Dynamically rendered inputs for each rubric criteria -->
+                </div>
+                <div class="form-group">
+                    <label for="override-teacher-notes"><i class="fa-solid fa-note-sticky"></i> Teacher Override Reason / Notes</label>
+                    <textarea id="override-teacher-notes" class="form-control" rows="3" placeholder="Explain why marks were overridden or add extra teacher feedback..."></textarea>
+                </div>
+                <div class="modal-footer mt-3" style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" class="btn btn-secondary" id="btn-cancel-override">Cancel</button>
+                    <button type="submit" class="btn btn-warning"><i class="fa-solid fa-floppy-disk"></i> Save Manual Marks</button>
+                </div>
+            </form>
         </div>
     </div>
 

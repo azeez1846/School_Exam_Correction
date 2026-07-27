@@ -60,4 +60,15 @@ public class SubmissionController {
         Map<String, Object> result = bulkProcessingService.processBulkUpload(examId, files, providerKey, modelName);
         return ResponseEntity.ok(result);
     }
+
+    @PostMapping("/bulk-pdf")
+    public ResponseEntity<Map<String, Object>> uploadBulkPdf(
+            @RequestParam("examId") Long examId,
+            @RequestParam("file") MultipartFile pdfFile,
+            @RequestParam(value = "providerKey", required = false) String providerKey,
+            @RequestParam(value = "modelName", required = false) String modelName
+    ) {
+        Map<String, Object> result = bulkProcessingService.processBulkPdf(examId, pdfFile, providerKey, modelName);
+        return ResponseEntity.ok(result);
+    }
 }

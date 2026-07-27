@@ -36,9 +36,18 @@ public class EvaluationResult {
 
     private LocalDateTime evaluatedAt;
 
+    private Boolean isTeacherOverridden = false;
+
+    @Column(length = 2000)
+    private String teacherNotes;
+
     public EvaluationResult() {}
 
     public EvaluationResult(Long id, Long submissionId, Double totalMarksObtained, Double maxMarks, Double percentageScore, String grade, String isPassed, String providerUsed, String modelUsed, String rubricBreakdownJson, String strengthsJson, String improvementsJson, String detailedFeedback, LocalDateTime evaluatedAt) {
+        this(id, submissionId, totalMarksObtained, maxMarks, percentageScore, grade, isPassed, providerUsed, modelUsed, rubricBreakdownJson, strengthsJson, improvementsJson, detailedFeedback, evaluatedAt, false, null);
+    }
+
+    public EvaluationResult(Long id, Long submissionId, Double totalMarksObtained, Double maxMarks, Double percentageScore, String grade, String isPassed, String providerUsed, String modelUsed, String rubricBreakdownJson, String strengthsJson, String improvementsJson, String detailedFeedback, LocalDateTime evaluatedAt, Boolean isTeacherOverridden, String teacherNotes) {
         this.id = id;
         this.submissionId = submissionId;
         this.totalMarksObtained = totalMarksObtained;
@@ -53,6 +62,8 @@ public class EvaluationResult {
         this.improvementsJson = improvementsJson;
         this.detailedFeedback = detailedFeedback;
         this.evaluatedAt = evaluatedAt;
+        this.isTeacherOverridden = isTeacherOverridden != null ? isTeacherOverridden : false;
+        this.teacherNotes = teacherNotes;
     }
 
     @PrePersist
@@ -81,6 +92,8 @@ public class EvaluationResult {
         private String improvementsJson;
         private String detailedFeedback;
         private LocalDateTime evaluatedAt;
+        private Boolean isTeacherOverridden = false;
+        private String teacherNotes;
 
         public EvaluationResultBuilder id(Long id) { this.id = id; return this; }
         public EvaluationResultBuilder submissionId(Long submissionId) { this.submissionId = submissionId; return this; }
@@ -96,9 +109,11 @@ public class EvaluationResult {
         public EvaluationResultBuilder improvementsJson(String improvementsJson) { this.improvementsJson = improvementsJson; return this; }
         public EvaluationResultBuilder detailedFeedback(String detailedFeedback) { this.detailedFeedback = detailedFeedback; return this; }
         public EvaluationResultBuilder evaluatedAt(LocalDateTime evaluatedAt) { this.evaluatedAt = evaluatedAt; return this; }
+        public EvaluationResultBuilder isTeacherOverridden(Boolean isTeacherOverridden) { this.isTeacherOverridden = isTeacherOverridden; return this; }
+        public EvaluationResultBuilder teacherNotes(String teacherNotes) { this.teacherNotes = teacherNotes; return this; }
 
         public EvaluationResult build() {
-            return new EvaluationResult(id, submissionId, totalMarksObtained, maxMarks, percentageScore, grade, isPassed, providerUsed, modelUsed, rubricBreakdownJson, strengthsJson, improvementsJson, detailedFeedback, evaluatedAt);
+            return new EvaluationResult(id, submissionId, totalMarksObtained, maxMarks, percentageScore, grade, isPassed, providerUsed, modelUsed, rubricBreakdownJson, strengthsJson, improvementsJson, detailedFeedback, evaluatedAt, isTeacherOverridden, teacherNotes);
         }
     }
 
@@ -143,4 +158,10 @@ public class EvaluationResult {
 
     public LocalDateTime getEvaluatedAt() { return evaluatedAt; }
     public void setEvaluatedAt(LocalDateTime evaluatedAt) { this.evaluatedAt = evaluatedAt; }
+
+    public Boolean getIsTeacherOverridden() { return isTeacherOverridden; }
+    public void setIsTeacherOverridden(Boolean isTeacherOverridden) { this.isTeacherOverridden = isTeacherOverridden; }
+
+    public String getTeacherNotes() { return teacherNotes; }
+    public void setTeacherNotes(String teacherNotes) { this.teacherNotes = teacherNotes; }
 }

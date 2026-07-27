@@ -65,4 +65,96 @@ public class AnalyticsService {
                 .distribution(distribution)
                 .build();
     }
+
+    @Autowired
+    private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
+
+    public ItemAnalysisDto getItemAnalysisForExam(Long examId) {
+        com.schoolexam.model.Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new RuntimeException("Exam not found with ID: " + examId));
+
+        List<com.schoolexam.model.PaperSubmission> submissions = submissionRepository.findByExamId(examId);
+        List<EvaluationResult> results = new ArrayList<>();
+        for (com.schoolexam.model.PaperSubmission sub : submissions) {
+            resultRepository.findBySubmissionId(sub.getId()).ifPresent(results::add);
+        }
+
+        Map<String, double[]> criterionTotals = new LinkedHashMap<>();
+
+        double totalPctSum = 0.0;
+        for (EvaluationResult r : results) {
+            if (r.getPercentageScore() != null) totalPctSum += r.getPercentageScore();
+            if (r.getRubricBreakdownJson() != null) {
+                try {
+                    List<RubricItemScore> breakdown = objectMapper.readValue(r.getRubricBreakdownJson(), new com.fasterxml.jackson.core.type.TypeReference<List<RubricItemScore>>() {});
+                    for (RubricItemScore item : breakdown) {
+                        String name = item.getCriteriaName();
+                        double score = item.getScoreObtained() != null ? item.getScoreObtained() : 0.0;
+                        double max = item.getMaxScore() != null ? item.getMaxScore() : 10.0;
+                        double[] curr = criterionTotals.computeIfAbsent(name, k -> new double[]{0.0, max, 0});
+                        curr[0] += score;
+                        curr[2] += 1;
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        double classAvgPct = results.size() > 0 ? Math.round((totalPctSum / results.size()) * 10.0) / 10.0 : 0.0;
+
+        List<RubricStat> rubricStats = new ArrayList<>();
+        for (Map.Entry<String, double[]> entry : criterionTotals.entrySet()) {
+            String name = entry.getKey();
+            double[] vals = entry.getValue();
+            double count = vals[2];
+            double maxScore = vals[1];
+            double avgObtained = count > 0 ? Math.round((vals[0] / count) * 10.0) / 10.0 : 0.0;
+            double pctClass = maxScore > 0 ? Math.round((avgObtained / maxScore) * 1000.0) / 10.0 : 0.0;
+
+            String difficulty = "MODERATE";
+            if (pctClass >= 80.0) difficulty = "EASY";
+            else if (pctClass < 60.0) difficulty = "HARD";
+
+            rubricStats.add(new RubricStat(name, maxScore, avgObtained, pctClass, difficulty));
+        }
+
+        return new ItemAnalysisDto(examId, exam.getTitle(), results.size(), classAvgPct, rubricStats);
+    }
+
+    public MisconceptionClusterDto getMisconceptionClustersForExam(Long examId) {
+        com.schoolexam.model.Exam exam = examRepository.findById(examId)
+                .orElseThrow(() -> new RuntimeException("Exam not found with ID: " + examId));
+
+        List<com.schoolexam.model.PaperSubmission> submissions = submissionRepository.findByExamId(examId);
+        List<EvaluationResult> results = new ArrayList<>();
+        for (com.schoolexam.model.PaperSubmission sub : submissions) {
+            resultRepository.findBySubmissionId(sub.getId()).ifPresent(results::add);
+        }
+
+        Map<String, Integer> errorCounts = new LinkedHashMap<>();
+        for (EvaluationResult r : results) {
+            if (r.getImprovementsJson() != null) {
+                try {
+                    List<String> items = objectMapper.readValue(r.getImprovementsJson(), new com.fasterxml.jackson.core.type.TypeReference<List<String>>() {});
+                    for (String text : items) {
+                        errorCounts.put(text, errorCounts.getOrDefault(text, 0) + 1);
+                    }
+                } catch (Exception ignored) {}
+            }
+        }
+
+        int totalEvaluated = Math.max(results.size(), 1);
+        List<MisconceptionItem> clusters = new ArrayList<>();
+        for (Map.Entry<String, Integer> entry : errorCounts.entrySet()) {
+            String issue = entry.getKey();
+            int count = entry.getValue();
+            double pct = Math.round(((double) count / totalEvaluated) * 1000.0) / 10.0;
+
+            String recommendation = "Review foundational concepts and assign targeted practice questions on " + issue.toLowerCase();
+            clusters.add(new MisconceptionItem(issue, count, pct, recommendation));
+        }
+
+        clusters.sort((a, b) -> Integer.compare(b.getFrequencyCount(), a.getFrequencyCount()));
+
+        return new MisconceptionClusterDto(examId, exam.getTitle(), clusters);
+    }
 }

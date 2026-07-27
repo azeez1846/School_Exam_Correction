@@ -10,6 +10,8 @@ let currentExamsCache = [];
 let chartInstance = null;
 let currentSingleSubmissionId = null;
 
+let currentEvaluationDto = null;
+
 function initApp() {
     setupAuthListeners();
     setupNavigation();
@@ -17,6 +19,7 @@ function initApp() {
     setupBulkGradingEvents();
     setupExamManagerEvents();
     setupSettingsModal();
+    setupPhaseEnhancements();
     
     // Check if token exists
     if (api.getToken()) {
@@ -337,11 +340,13 @@ Student Answer: Force equals mass times acceleration (F = m * a). Rate of change
 }
 
 function displayEvaluationScorecard(res) {
+    currentEvaluationDto = res;
+    currentSingleSubmissionId = res.submissionId;
     document.getElementById('eval-empty-state').classList.add('hidden');
     const scorecard = document.getElementById('eval-scorecard');
     scorecard.classList.remove('hidden');
 
-    document.getElementById('res-pass-badge').textContent = res.isPassed;
+    document.getElementById('res-pass-badge').textContent = res.isPassed + (res.isTeacherOverridden ? ' (OVERRIDDEN)' : '');
     document.getElementById('res-pass-badge').className = res.isPassed === 'PASSED' ? 'badge badge-emerald' : 'badge badge-rose';
     document.getElementById('res-student-name').textContent = res.studentName;
     document.getElementById('res-exam-details').textContent = `${res.examTitle} • Subject: ${res.subject} • Roll: ${res.rollNumber}`;
@@ -609,4 +614,205 @@ function setupSettingsModal() {
         const selectedText = e.target.options[e.target.selectedIndex].text;
         document.getElementById('active-model-name').textContent = selectedText.split('(')[0].trim();
     });
+}
+
+function setupPhaseEnhancements() {
+    const overrideModal = document.getElementById('override-modal');
+    const openOverrideBtn = document.getElementById('btn-open-override');
+    const closeOverrideBtn = document.getElementById('btn-close-override');
+    const cancelOverrideBtn = document.getElementById('btn-cancel-override');
+    const overrideForm = document.getElementById('override-form');
+
+    if (openOverrideBtn) {
+        openOverrideBtn.addEventListener('click', () => {
+            if (!currentSingleSubmissionId && (!currentEvaluationDto || !currentEvaluationDto.submissionId)) {
+                alert('Please evaluate a paper first before overriding scores.');
+                return;
+            }
+            openOverrideModal();
+        });
+    }
+
+    if (closeOverrideBtn) closeOverrideBtn.addEventListener('click', () => overrideModal.classList.add('hidden'));
+    if (cancelOverrideBtn) cancelOverrideBtn.addEventListener('click', () => overrideModal.classList.add('hidden'));
+
+    if (overrideForm) {
+        overrideForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const subId = currentSingleSubmissionId || (currentEvaluationDto ? currentEvaluationDto.submissionId : null);
+            if (!subId) return;
+
+            const breakdownInputs = document.querySelectorAll('.override-score-input');
+            const newRubrics = [];
+            let totalObtained = 0;
+
+            breakdownInputs.forEach(input => {
+                const criteriaName = input.getAttribute('data-criteria');
+                const maxScore = parseFloat(input.getAttribute('data-max'));
+                const scoreObtained = parseFloat(input.value) || 0;
+                totalObtained += scoreObtained;
+                newRubrics.push({ criteriaName, scoreObtained, maxScore, feedback: 'Teacher manual adjustment' });
+            });
+
+            const teacherNotes = document.getElementById('override-teacher-notes').value;
+
+            try {
+                const updatedDto = await api.overrideEvaluation(subId, newRubrics, totalObtained, teacherNotes);
+                currentEvaluationDto = updatedDto;
+                displayEvaluationScorecard(updatedDto);
+                overrideModal.classList.add('hidden');
+                alert('Manual score override saved successfully!');
+            } catch (err) {
+                alert('Failed to save manual score override: ' + err.message);
+            }
+        });
+    }
+
+    const exportCsvBtn = document.getElementById('btn-export-csv');
+    if (exportCsvBtn) {
+        exportCsvBtn.addEventListener('click', () => {
+            const selectEl = document.getElementById('single-exam-select');
+            const examId = selectEl ? selectEl.value : 1;
+            if (!examId) {
+                alert('Please select an exam first.');
+                return;
+            }
+            window.location.href = `/api/evaluations/export/csv/${examId}`;
+        });
+    }
+
+    const printReportBtn = document.getElementById('btn-print-report');
+    if (printReportBtn) {
+        printReportBtn.addEventListener('click', () => {
+            const subId = currentSingleSubmissionId || (currentEvaluationDto ? currentEvaluationDto.submissionId : null);
+            if (!subId) {
+                alert('Please select or evaluate a paper first.');
+                return;
+            }
+            window.open(`/api/evaluations/export/report-card/${subId}`, '_blank');
+        });
+    }
+
+    const pdfForm = document.getElementById('bulk-pdf-form');
+    if (pdfForm) {
+        pdfForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const examId = document.getElementById('pdf-exam-select').value;
+            const pdfFile = document.getElementById('pdf-file-input').files[0];
+            if (!examId || !pdfFile) {
+                alert('Please select an exam target and multi-page PDF file.');
+                return;
+            }
+            const formData = new FormData();
+            formData.append('examId', examId);
+            formData.append('file', pdfFile);
+            formData.append('providerKey', 'gemini');
+
+            const startBtn = pdfForm.querySelector('button[type="submit"]');
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Splitting & Grading PDF Pages...';
+
+            try {
+                const res = await api.submitBulkPdf(formData);
+                alert(`PDF Processing Complete! Split ${res.totalPages} pages (${res.successCount} succeeded, ${res.failCount} failed).`);
+                switchView('history');
+                loadHistoryTable();
+            } catch (err) {
+                alert('PDF Batch Processing failed: ' + err.message);
+            } finally {
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<i class="fa-solid fa-scissors"></i> Split PDF Pages & Process Batch';
+            }
+        });
+    }
+
+    const analysisSelect = document.getElementById('analysis-exam-select');
+    if (analysisSelect) {
+        analysisSelect.addEventListener('change', async (e) => {
+            const examId = e.target.value;
+            if (!examId) return;
+            loadItemAnalysisData(examId);
+        });
+    }
+}
+
+function openOverrideModal() {
+    const modal = document.getElementById('override-modal');
+    const container = document.getElementById('override-rubrics-container');
+    container.innerHTML = '';
+
+    const rubrics = (currentEvaluationDto && currentEvaluationDto.rubricBreakdown) ? currentEvaluationDto.rubricBreakdown : [];
+
+    rubrics.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'form-group mb-2';
+        div.innerHTML = `
+            <label><b>${r.criteriaName}</b> (Max: ${r.maxScore})</label>
+            <input type="number" step="0.5" max="${r.maxScore}" min="0" value="${r.scoreObtained}" 
+                   class="form-control override-score-input" data-criteria="${r.criteriaName}" data-max="${r.maxScore}">
+        `;
+        container.appendChild(div);
+    });
+
+    if (currentEvaluationDto && currentEvaluationDto.teacherNotes) {
+        document.getElementById('override-teacher-notes').value = currentEvaluationDto.teacherNotes;
+    } else {
+        document.getElementById('override-teacher-notes').value = '';
+    }
+
+    modal.classList.remove('hidden');
+}
+
+async function loadItemAnalysisData(examId) {
+    const container = document.getElementById('item-analysis-container');
+    container.innerHTML = '<div class="p-3 text-center"><i class="fa-solid fa-spinner fa-spin text-indigo"></i> Loading Class Misconception & Item Analysis...</div>';
+
+    try {
+        const itemAnalysis = await api.getItemAnalysis(examId);
+        const misconceptions = await api.getMisconceptionClusters(examId);
+
+        let html = `
+            <div class="row mt-2" style="display:flex; flex-wrap:wrap; gap:16px;">
+                <div style="flex:1; min-width:300px;" class="p-3 bg-light rounded">
+                    <h4 class="mb-2"><i class="fa-solid fa-layer-group text-indigo"></i> Rubric Criteria Difficulty Rating</h4>
+                    <ul style="list-style:none; padding:0;">
+        `;
+
+        (itemAnalysis.rubricItemStats || []).forEach(stat => {
+            const badgeClass = stat.difficultyRating === 'HARD' ? 'badge-rose' : (stat.difficultyRating === 'EASY' ? 'badge-emerald' : 'badge-amber');
+            html += `
+                <li class="mb-3 p-2 bg-white rounded shadow-xs" style="border:1px solid #e2e8f0;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong>${stat.criteriaName}</strong>
+                        <span class="badge ${badgeClass}">${stat.difficultyRating} (${stat.percentageClassScore}%)</span>
+                    </div>
+                    <div class="text-muted text-xs mt-1">Class Avg: ${stat.averageScoreObtained} / ${stat.maxScore}</div>
+                </li>
+            `;
+        });
+        html += `</ul></div>`;
+
+        html += `
+            <div style="flex:1; min-width:300px;" class="p-3 bg-light rounded">
+                <h4 class="mb-2"><i class="fa-solid fa-triangle-exclamation text-amber"></i> Class-wide Misconception Clusters</h4>
+                <ul style="list-style:none; padding:0;">
+        `;
+
+        (misconceptions.commonErrors || []).forEach(errItem => {
+            html += `
+                <li class="mb-3 p-2 bg-white rounded shadow-xs" style="border-left:4px solid #f59e0b;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <strong class="text-slate-dark">${errItem.issueTitle}</strong>
+                        <span class="badge badge-amber">${errItem.affectedPercentage}% Affected</span>
+                    </div>
+                    <div class="text-xs text-indigo mt-1"><i class="fa-solid fa-lightbulb"></i> <b>AI Recommendation:</b> ${errItem.recommendation}</div>
+                </li>
+            `;
+        });
+        html += `</ul></div></div>`;
+
+        container.innerHTML = html;
+    } catch (err) {
+        container.innerHTML = `<div class="alert alert-danger p-3">Failed to load item analysis: ${err.message}</div>`;
+    }
 }
