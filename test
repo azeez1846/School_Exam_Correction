@@ -1,581 +1,147 @@
-/* ====================================================================================================
-   SALESFLOW REPORT FOR WHOLESALE LINE OF BUSINESS (WS LOB)
-   Environment: Guidewire Data Studio (PostgreSQL engine)
-   Jira Requirement: XLCDIGFAC-126838 (Wholesale Dashboard Requests / Feedback - Alignment & Signoff)
-   Parent Reference: salesflow_report_ws_9_15_2026 & new 125 (salesflow_8_10_2026_fixed.sql)
+-- =========================================================================================
+-- DATASET 2: wcm_gradient_extract
+-- Purpose: This query joins the pre-materialized "wcm_policy_base" dataset to the massive
+-- Cost and Coverage tables. Because the base policy data is already computed, the
+-- database engine can process this query in parallel without timing out.
+-- INSTRUCTIONS: Run this query in Data Studio ONLY AFTER publishing "wcm_policy_base".
+-- =========================================================================================
 
-   KEY LOGIC & ARCHITECTURAL HIGHLIGHTS:
-   1. SUBMISSION VS. ISSUANCE DIFFERENTIATION LOGIC:
-      - Rule 1: If submission(Bind) is the latest transaction -> Include submission(Bind).
-      - Rule 2: If submission(Bind) is in bound status AND issuance is not in final status -> Include submission(Bind) data only.
-      - Rule 3: If issuance is the latest transaction and is in Bound status -> Include issuance only.
-      - Rule 4: Policy changes, cancellations, rewrites, renewals, and reinstatements are never filtered out.
-      - Order By Priority: ORDER BY base.status_priority ASC, base.type_priority ASC, base.updatetime DESC, base.policyperiod_id DESC.
-        * status_priority: Bound = 1, Quoted/Rated = 2, Other = 3.
-        * type_priority: Issuance = 1, Submission = 2, Other = 3.
-        When both are Bound (1 = 1), Issuance wins (1 < 2).
-        When Submission is Bound (1) and Issuance is not final (2 or 3), Submission wins (1 < 2/3).
+SELECT 
+  base.accountname AS accountname,
+  base.policy_number AS policy_number,
+  base.transaction AS transaction,
+  base.submission_number AS submission_number,
+  base.effective_date AS effective_date,
+  base.expiration_date AS expiration_date,
+  base.termnumber AS termnumber,
+  base.plob AS plob,
+  base.base_state AS base_state,
+  base.underwriting_company AS underwriting_company,
+  base.underwriter AS underwriter,
+  base.producer AS producer,
+  base.policyperiodstatus AS policyperiodstatus,
+  base.policystatus AS policystatus,
+  base.industry AS industry,
+  base.sic2 AS sic2,
+  base.sic2_desc AS sic2_desc,
+  base.sic4 AS sic4,
+  base.sic4_desc AS sic4_desc,
+  base.naics_code AS naics_code,
+  base.naics_desc AS naics_desc,
+  base.each_accident_limit AS each_accident_limit,
+  base.disease_each_employee_limit AS disease_each_employee_limit,
+  base.disease_policy_limit AS disease_policy_limit,
+  CASE 
+    WHEN coststate.typecode IS NOT NULL THEN coststate.typecode::varchar(2) 
+    ELSE base.base_state 
+  END AS rated_state,
+  CASE 
+    WHEN wcmcovempl.wcmselectby LIKE '%Description%' THEN wcmcovempl.wcmclasscodebyclassdescription 
+    WHEN wcmcovempl.wcmclasscodeforclassdescriptio IS NOT NULL THEN wcmcovempl.wcmclasscodeforclassdescriptio 
+    WHEN statrecord.id IS NOT NULL THEN statrecord.classcode 
+    ELSE '' 
+  END AS class_code,
+  CASE 
+    WHEN COALESCE(clausepattern.patternid, clausepattern_fallback.patternid) = 'WCMClassClassCode' THEN concat(coalesce(wcmcovempl.wcmgoverninglaw, ''), '-', coalesce(wcmcovempl.wcmclassdescriptionbyclasscode, wcmcovempl.wcmclassdescriptionforclasscod)) 
+    WHEN COALESCE(clausepattern.name, clausepattern_fallback.name) IS NOT NULL THEN COALESCE(clausepattern.name, clausepattern_fallback.name) 
+    WHEN COALESCE(clausepattern.name, clausepattern_fallback.name) IS NULL AND wcmcost.actualamount < 0 THEN 'Premium Discount' 
+    ELSE NULL 
+  END AS class_description,
+  wcmcost.basis::decimal(38, 2) AS exposure_basis,
+  -- Matches presenter.BasisType from PolicyCenter UI (Jira XLCDIGFAC-128070)
+  CASE 
+    -- 1. Number of Part Time Employees (Fixes Policy GWG8002010)
+    WHEN COALESCE(coveredemployeecov.wcmnumberparttimeemplsterm, coveredemployeecov.wcmnumberparttimeempls) IS NOT NULL 
+      THEN 'Number of Part Time Employees'
+    -- 2. Number of Full Time Employees (e.g., Domestic Workers 0913)
+    WHEN COALESCE(coveredemployeecov.wcmnumberfulltimeemplsterm, coveredemployeecov.wcmnumberfulltimeempls) IS NOT NULL 
+      THEN 'Number of Full Time Employees'
+    -- 3. Number of Volunteers
+    WHEN COALESCE(coveredemployeecov.wcmnumberofvolunteersterm, coveredemployeecov.wcmnumberofvolunteers) IS NOT NULL 
+      THEN 'Number of Volunteers'
+    -- 4. Number of Buildings
+    WHEN COALESCE(coveredemployeecov.wcmnumberofbuildingsterm, coveredemployeecov.wcmnumberofbuildings) IS NOT NULL 
+      THEN 'Number of Buildings'
+    -- 5. Number of Ambulances Corps
+    WHEN COALESCE(coveredemployeecov.wcmnumberofambulancesterm, coveredemployeecov.wcmnumberofambulances) IS NOT NULL 
+      THEN 'Number of Ambulances Corps'
+    -- 6. Number of Weeks in the Program
+    WHEN COALESCE(coveredemployeecov.wcmnumberofweeksinprogramterm, coveredemployeecov.wcmnumberofweeksinprogram) IS NOT NULL 
+      THEN 'Number of Weeks in the Program'
+    -- 7. Volunteer Firefighters Population
+    WHEN COALESCE(coveredemployeecov.wcmvolunteerfirefighterspopulationterm, coveredemployeecov.wcmvolunteerfirefighterspopulation) IS NOT NULL 
+      THEN 'Volunteer Firefighters Population'
+    -- 8. Number of Employees
+    WHEN COALESCE(coveredemployeecov.wcmnumberofemplsterm, coveredemployeecov.wcmnumberofempls) IS NOT NULL 
+      THEN 'Number of Employees'
+    -- 9. Number of Ginning Locations
+    WHEN COALESCE(coveredemployeecov.wcmnumberofginninglocationterm, coveredemployeecov.wcmnumberofginninglocation) IS NOT NULL 
+      THEN 'Number Of Ginning Location'
+    -- 10. Estimated Annual Payroll (Standard rating basis / wcmpayroll)
+    WHEN COALESCE(coveredemployeecov.wcmsubjectpayrollterm, coveredemployeecov.wcmsubjectpayroll) IS NOT NULL
+      OR wcmcovempl.wcmpayroll IS NOT NULL
+      OR COALESCE(clausepattern.patternid, clausepattern_fallback.patternid) = 'WCMClassClassCode'
+      THEN 'Estimated Annual Payroll'
+    ELSE 'Estimated Annual Payroll' 
+  END AS exposure_basistype,
+  wcmcost.actualadjrate::decimal(38, 4) AS rate,
+  wcmcost.actualamount AS premium,
+  base.total_policy_premium,
+  COALESCE(
+    CONCAT(COALESCE(polloc.locationnum, NULL), ':', COALESCE(polloc.addressline1internal, NULL), ',', COALESCE(polloc.cityinternal, NULL), ',', COALESCE(coststate.typecode, NULL), ',', COALESCE(polloc.postalcodeinternal, NULL)), 
+    CONCAT(COALESCE(polloc.locationnum, NULL), ':', COALESCE(coststate.typecode, NULL))
+  ) AS location_full,
+  polloc.locationnum AS location_number,
+  polloc.cityinternal AS city_town,
+  polloc.countyinternal AS county,
+  polloc.postalcodeinternal AS zipcode,
+  wcmloc.wcmnumberofempls AS number_of_employees,
+  
+  -- PRIMARY KEY & ORDER BY SAFEGUARDS FOR DATA STUDIO 
+  base.publicid AS publicid,
+  COALESCE(wcmcost.publicid::varchar, base.publicid) AS costpublicid,
+  COALESCE(wcmcost.updatetime, base.updatetime) AS costupdatetime,
+  
+  'Cost' AS recordtype
 
-   2. ZERO-FAN-OUT & ANTI-DUPLICATION:
-      - All 1:N relations (pc_policycontactrole, pc_jobuserroleassign, pc_acctholderedge, 
-        pcx_regionappetitemapping_ext) are deduplicated using subqueries with ROW_NUMBER() OVER (...) = 1.
+FROM pc10_replication.pc_wcmcost wcmcost
+  
+  -- 1. JOIN TO OUR PRE-MATERIALIZED BASE DATASET
+  JOIN wcm_policy_base.wcm_policy_base base ON base.policyperiod_id = wcmcost.branchid
+  
+  LEFT JOIN pc10_replication.pctl_jurisdiction coststate ON coststate.id = wcmcost.state
+  
+  -- 2. COVERAGES & SCHEDULES (Temporal Joins using base.periodstart_raw)
+  LEFT JOIN pc10_replication.pcx_wcmcoveredemployeecov coveredemployeecov ON coveredemployeecov.branchid = wcmcost.branchid AND coveredemployeecov.fixedid = wcmcost.coveredemployeecov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(coveredemployeecov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(coveredemployeecov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmlocationcov locationcov ON locationcov.branchid = wcmcost.branchid AND locationcov.fixedid = wcmcost.locationcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(locationcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(locationcov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmjurisdictioncov jurisdictioncov ON jurisdictioncov.branchid = wcmcost.branchid AND jurisdictioncov.fixedid = wcmcost.jurisdictioncov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(jurisdictioncov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(jurisdictioncov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmmanuscriptoptioncov wcmmanuscriptoptioncov ON wcmmanuscriptoptioncov.branchid = wcmcost.branchid AND wcmmanuscriptoptioncov.fixedid = wcmcost.wcmmanuscriptoptioncov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(wcmmanuscriptoptioncov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(wcmmanuscriptoptioncov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmjurisdictioncond wcmjurisdictioncond ON wcmjurisdictioncond.branchid = wcmcost.branchid AND wcmjurisdictioncond.fixedid = wcmcost.jurisdictioncond AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(wcmjurisdictioncond.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(wcmjurisdictioncond.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmlineschedcovitemcov lineschedcovitemcov ON lineschedcovitemcov.branchid = wcmcost.branchid AND lineschedcovitemcov.fixedid = wcmcost.lineschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(lineschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(lineschedcovitemcov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmlocschedcovitemcov locschedcovitemcov ON locschedcovitemcov.branchid = wcmcost.branchid AND locschedcovitemcov.fixedid = wcmcost.locschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(locschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(locschedcovitemcov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmworkerscomplinecov workerscomplinecov ON workerscomplinecov.branchid = wcmcost.branchid AND workerscomplinecov.fixedid = wcmcost.workerscomplinecov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(workerscomplinecov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(workerscomplinecov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmjurisschedcovitemcov jurisschedcovitemcov ON jurisschedcovitemcov.branchid = wcmcost.branchid AND jurisschedcovitemcov.fixedid = wcmcost.jurisschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(jurisschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(jurisschedcovitemcov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmcovempschedcovitemcov covempschedcovitemcov ON covempschedcovitemcov.branchid = wcmcost.branchid AND covempschedcovitemcov.fixedid = wcmcost.covempschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(covempschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(covempschedcovitemcov.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmcovempschedcovitem covEmpschedCovItem ON covempschedcovitem.branchid = wcmcost.branchid AND covempschedcovitem.fixedid = wcmcost.covempschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(covempschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(covempschedcovitem.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmjurisschedcovitem jurisschedCovItem ON jurisschedcovitem.branchid = wcmcost.branchid AND jurisschedcovitem.fixedid = wcmcost.jurisschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(jurisschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(jurisschedcovitem.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmlineschedcovitem lineSchedCovItem ON lineschedcovitem.branchid = wcmcost.branchid AND lineschedcovitem.fixedid = wcmcost.lineschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(lineschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(lineschedcovitem.expirationdate, base.periodend_raw)
+  LEFT JOIN pc10_replication.pcx_wcmlocschedcovitem locschedCovItem ON locschedcovitem.branchid = wcmcost.branchid AND locschedcovitem.fixedid = wcmcost.locschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(locschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(locschedcovitem.expirationdate, base.periodend_raw)
+  
+  -- 3. MISCELLANEOUS DATA
+  LEFT JOIN pc10_replication.pcx_wcmcoveredemployee wcmcovEmpl ON wcmcovempl.id = coveredemployeecov.coveredemployee
+  LEFT JOIN pc10_replication.pcx_wcmlocation wcmloc ON wcmloc.id = wcmcovempl.location
+  LEFT JOIN pc10_replication.pc_policylocation polloc ON wcmloc.policylocation = polloc.id
+  
+  -- 4. OPTIMIZED PATTERN AND STAT RECORD JOINS
+  -- By using two separate LEFT JOINs instead of an 'OR' condition, we maintain lightning-fast Hash/Merge joins
+  LEFT JOIN pc10_replication.pc_etlclausepattern clausepattern 
+    ON clausepattern.codeidentifier = COALESCE(wcmjurisdictioncond.patterncode, covempschedcovitemcov.patterncode, locationcov.patterncode, jurisdictioncov.patterncode, wcmmanuscriptoptioncov.patterncode, lineschedcovitemcov.patterncode, locschedcovitemcov.patterncode, workerscomplinecov.patterncode, coveredemployeecov.patterncode, jurisschedcovitemcov.patterncode)
+    
+  LEFT JOIN pc10_replication.pc_etlclausepattern clausepattern_fallback 
+    ON clausepattern_fallback.patternid = COALESCE(wcmjurisdictioncond.patterncode, covempschedcovitemcov.patterncode, locationcov.patterncode, jurisdictioncov.patterncode, wcmmanuscriptoptioncov.patterncode, lineschedcovitemcov.patterncode, locschedcovitemcov.patterncode, workerscomplinecov.patterncode, coveredemployeecov.patterncode, jurisschedcovitemcov.patterncode)
+    
+  LEFT JOIN pc10_replication.pcx_wcmstatrecord statrecord 
+    ON statrecord.id = COALESCE(wcmjurisdictioncond.statrecord, covempschedcovitemcov.statrecord, locationcov.statrecord, jurisdictioncov.statrecord, lineschedcovitemcov.statrecord, locschedcovitemcov.statrecord, workerscomplinecov.statrecord, coveredemployeecov.statrecord, jurisschedcovitemcov.statrecord)
 
-   3. NO CTE / WITH CLAUSE:
-      - Implemented as a 3-tier nested subquery to avoid any Data Studio parser wrapping errors.
-
-   4. COMPLETE FIELD COVERAGE:
-      - Includes all 37 Jira fields (baseline + 14 new Wholesale fields) and audit columns.
-   ==================================================================================================== */
-
-SELECT
-  -- Core Jira Fields (37 Fields)
-  t.eventid                     AS event_id,
-  t.underwriterusername         AS underwriter_username,
-  t.jobnumber                   AS job_number,
-  t.newrenewal                  AS new_renewal,
-  t.receiveddate                AS received_date,
-  t.effectivedate               AS effective_date,
-  t.accountnumber               AS account_number,
-  t.policynumber                AS policy_number,
-  t.accountholder               AS account_holder,
-  t.base_state                  AS base_state,
-  t.orgname                     AS organization_name,
-  t.orgcity                     AS organization_city,
-  t.orgstate                    AS organization_state,
-  t.productcode                 AS product_code,
-  t.policysymbol                AS policy_symbol,
-  t.winningcarrier              AS winning_carrier,
-  t.notes                       AS notes,
-  t.producercity                AS producer_city,
-  t.producerstate               AS producer_state,
-  t.appetite_ext                AS appetite_extension,
-  t.quotedpremium               AS quoted_premium,
-  t.boundpremium                AS total_bound_premium,
-  t.yearofissue                 AS year_of_issue,
-
-  -- New Wholesale Fields from Jira & Guidewire PCF/ETI/ETX Models (14 Fields)
-  t.subproduct                  AS sub_product,
-  t.isoglclasscode              AS iso_gl_class_code,
-  t.siccode                     AS sic_code,
-  t.tradeofbusiness             AS trade_of_business,
-  t.naicscode                   AS naics_code,
-  t.naicssector                 AS naics_sector,
-  t.naicssubsector              AS naics_sub_sector,
-  t.premiumbucket               AS premium_bucket,
-  t.classificationbucket        AS classification_bucket,
-  t.policytype                  AS policy_type,
-  t.brokercontact               AS broker_contact,
-  t.pricingforexcessonly        AS pricing_for_excess_only,
-  t.quotetype                   AS quote_type,
-  t.energytradeofbusiness       AS energy_trade_of_business,
-
-  -- Additional Parent Query Audit & Diagnostic Columns
-  t.transaction_type            AS transaction_type,
-  t.policyperiod_status         AS policy_period_status,
-  t.policy_expiration_date      AS policy_expiration_date,
-  t.total_premium               AS total_premium,
-  t.lob                         AS lob,
-
-  -- Workers' Compensation Exposure Basis & Basis Type (Jira XLCDIGFAC-128070)
-  t.exposure_basis              AS exposure_basis,
-  t.exposure_basistype          AS exposure_basistype
-FROM (
-  SELECT
-    base.eventid                                                    AS eventid,
-    base.underwriterusername                                        AS underwriterusername,
-    base.jobnumber                                                  AS jobnumber,
-    base.newrenewal                                                 AS newrenewal,
-    base.receiveddate                                               AS receiveddate,
-    base.effectivedate                                              AS effectivedate,
-    base.accountnumber                                              AS accountnumber,
-    base.policynumber                                               AS policynumber,
-    base.accountholder                                              AS accountholder,
-    base.base_state                                                 AS base_state,
-    base.orgname                                                    AS orgname,
-    base.orgcity                                                    AS orgcity,
-    base.orgstate                                                   AS orgstate,
-    base.productcode                                                AS productcode,
-    base.policysymbol                                               AS policysymbol,
-    base.winningcarrier                                             AS winningcarrier,
-    base.notes                                                      AS notes,
-    base.producercity                                               AS producercity,
-    base.producerstate                                              AS producerstate,
-    base.appetite_ext                                               AS appetite_ext,
-    base.quotedpremium                                              AS quotedpremium,
-    base.boundpremium                                               AS boundpremium,
-    base.yearofissue                                                AS yearofissue,
-
-    -- Wholesale specific fields
-    base.subproduct                                                 AS subproduct,
-    base.isoglclasscode                                             AS isoglclasscode,
-    base.siccode                                                    AS siccode,
-    base.tradeofbusiness                                            AS tradeofbusiness,
-    base.naicscode                                                  AS naicscode,
-    base.naicssector                                                AS naicssector,
-    base.naicssubsector                                             AS naicssubsector,
-    base.premiumbucket                                              AS premiumbucket,
-    base.classificationbucket                                       AS classificationbucket,
-    base.policytype                                                 AS policytype,
-    base.brokercontact                                              AS brokercontact,
-    base.pricingforexcessonly                                       AS pricingforexcessonly,
-    base.quotetype                                                  AS quotetype,
-    base.energytradeofbusiness                                      AS energytradeofbusiness,
-
-    -- Audit columns
-    base.transaction_type                                           AS transaction_type,
-    base.policyperiod_status                                        AS policyperiod_status,
-    base.policy_expiration_date                                     AS policy_expiration_date,
-    base.total_premium                                              AS total_premium,
-    base.lob                                                        AS lob,
-
-    -- WC Exposure Basis & Basis Type
-    base.exposure_basis                                             AS exposure_basis,
-    base.exposure_basistype                                         AS exposure_basistype,
-
-    ROW_NUMBER() OVER (
-      PARTITION BY
-        base.policy_partition_key,
-        base.job_partition_bucket
-      ORDER BY
-        base.status_priority ASC,
-        base.type_priority ASC,
-        base.updatetime DESC,
-        base.policyperiod_id DESC
-    ) AS rn
-  FROM (
-    SELECT
-      -- Core Identification & Keys
-      act.accountnumber                                               AS accountnumber,
-      job.jobnumber                                                   AS jobnumber,
-      pp.policynumber                                                 AS policynumber,
-      jobtype.typecode                                                AS transaction_type,
-      ppstatus.name                                                   AS policyperiod_status,
-      pp.id                                                           AS policyperiod_id,
-      pp.updatetime                                                   AS updatetime,
-      policy.productcode                                              AS lob,
-      policy.productcode                                              AS productcode,
-
-      -- Partitioning Keys for Deduplication and Submission vs Issuance Logic
-      -- Using policyid guarantees that draft periods (where policynumber is null) and bound periods
-      -- (where policynumber is assigned) share the exact same partition key, preventing duplicate rows.
-      CAST(pp.policyid AS VARCHAR)                                    AS policy_partition_key,
-      CASE
-        WHEN LOWER(jobtype.typecode) IN ('submission', 'issuance')
-          THEN 'NEW BUSINESS'
-        ELSE CONCAT(LOWER(jobtype.typecode), '_', CAST(job.id AS VARCHAR))
-      END                                                             AS job_partition_bucket,
-
-      -- Status Priority: Bound = 1, Quoted/Rated = 2, Others = 3
-      CASE
-        WHEN LOWER(ppstatus.typecode) = 'bound' THEN 1
-        WHEN LOWER(ppstatus.typecode) IN ('quoted', 'rated') THEN 2
-        ELSE 3
-      END                                                             AS status_priority,
-
-      -- Type Priority: Issuance = 1, Submission = 2, Others = 3
-      CASE
-        WHEN LOWER(jobtype.typecode) = 'issuance' THEN 1
-        WHEN LOWER(jobtype.typecode) = 'submission' THEN 2
-        ELSE 3
-      END                                                             AS type_priority,
-
-      -- Event ID (Format: Status - Job [Reason])
-      CASE
-        WHEN ppstatus.id IN (5, 13, 1004) OR LOWER(ppstatus.typecode) IN ('declined', 'nottaken', 'withdrawn')
-          THEN CONCAT(ppstatus.name, '-', COALESCE(jobtype.description, jobtype.name), '(', COALESCE(reasoncode.description, ''), ')')
-        ELSE CONCAT(ppstatus.name, '-', COALESCE(jobtype.description, jobtype.name))
-      END                                                             AS eventid,
-
-      -- Underwriter Username (with wholesale direct extension fallback)
-      COALESCE(
-        uw.underwriteractualname,
-        uw.underwriterusername,
-        CONCAT(uw_direct_c.firstname, ' ', uw_direct_c.lastname),
-        uw_direct_cr.username
-      )                                                               AS underwriterusername,
-
-      -- New / Renewal Flag
-      CASE
-        WHEN job.subtype IN (7) OR LOWER(jobtype.typecode) = 'renewal'
-          THEN 'RENEWAL'
-        ELSE 'NEWBUSINESS'
-      END                                                             AS newrenewal,
-
-      -- Dates
-      COALESCE(pp.writtendate, job.createtime)                        AS receiveddate,
-      COALESCE(pp.editeffectivedate, pp.periodstart)                  AS effectivedate,
-      COALESCE(pp.editeffectivedate, pp.periodstart)                  AS transaction_effective_date,
-      pp.periodend                                                    AS policy_expiration_date,
-      EXTRACT(YEAR FROM COALESCE(pp.editeffectivedate, pp.periodstart)) AS yearofissue,
-
-      -- Account Holder
-      COALESCE(
-        acctholder.contactname,
-        CONCAT(acctholder.firstname, ' ', acctholder.lastname)
-      )                                                               AS accountholder,
-
-      -- Base State (Jurisdiction)
-      jurisdiction.name                                               AS base_state,
-
-      -- Producer Organization & Addresses
-      org.namedenorm                                                  AS orgname,
-      orgaddress.city                                                 AS orgcity,
-      orgaddrstate.name                                               AS orgstate,
-      produceraddress.city                                            AS producercity,
-      producerstate.name                                              AS producerstate,
-
-      -- Policy Symbol (Prefix of policy number)
-      SUBSTRING(pp.policynumber FROM 1 FOR 3)                         AS policysymbol,
-
-      -- Carrier & Underwriting Notes
-      job.winningcarrier_ext                                          AS winningcarrier,
-      CASE
-        WHEN LOWER(ppstatus.typecode) IN ('declined', 'nottaken')
-          THEN job.rejectnotes_ext
-        WHEN LOWER(ppstatus.typecode) IN ('withdrawn')
-          THEN job.withdrawnotes_ext
-        ELSE ' '
-      END                                                             AS notes,
-
-      -- Appetite Extension
-      COALESCE(
-        pp.appetite_ext,
-        act.appetite_ext,
-        region_appetite_map.appetite_ext
-      )                                                               AS appetite_ext,
-
-      -- Financials & Premiums
-      pp.totalpremiumrpt                                              AS total_premium,
-      CASE
-        WHEN LOWER(ppstatus.typecode) IN ('quoted')
-          THEN pp.totalpremiumrpt
-      END                                                             AS quotedpremium,
-      CASE
-        WHEN LOWER(ppstatus.typecode) IN ('bound')
-          THEN pp.totalpremiumrpt
-      END                                                             AS boundpremium,
-
-      -- ==========================================================
-      -- NEW WHOLESALE FIELDS (Derived from Jira & Guidewire Models)
-      -- ==========================================================
-
-      -- 1. Sub Product (from typelist MarketOffering_Ext)
-      COALESCE(subprod.name, subprod.typecode)                        AS subproduct,
-
-      -- 2. ISO GL Class Code (from Primary Named Insured role)
-      pnirole.wsisoclasscode_ext                                      AS isoglclasscode,
-
-      -- 3. SIC Code (Wholesale WSSICCode_Ext with fallback to sic4code_ext)
-      COALESCE(
-        pnirole.wssiccode_ext,
-        pnirole.sic4code_ext,
-        act.sic4code_ext
-      )                                                               AS siccode,
-
-      -- 4. Trade of Business (ToB)
-      pnirole.wstradeofbusiness_ext                                   AS tradeofbusiness,
-
-      -- 5. NAICS Code (Wholesale WSNAICSCode_Ext with fallback to naicscode_ext)
-      COALESCE(
-        pnirole.wsnaicscode_ext,
-        pnirole.naicscode_ext
-      )                                                               AS naicscode,
-
-      -- 6. NAICS Sector
-      pnirole.wsnaicssector_ext                                       AS naicssector,
-
-      -- 7. NAICS SubSector
-      pnirole.wsnaicssubsector_ext                                    AS naicssubsector,
-
-      -- 8. Premium Bucket (from typelist WPLClassification_Ext)
-      COALESCE(prembucket.name, prembucket.typecode)                  AS premiumbucket,
-
-      -- 9. Classification Bucket (from typelist WPLClassification_Ext)
-      COALESCE(classbucket.name, classbucket.typecode)                AS classificationbucket,
-
-      -- 10. Policy Type (from typelist WPLPolicyTypes_Ext)
-      COALESCE(poltype.name, poltype.typecode)                        AS policytype,
-
-      -- 11. Broker Contact (from PolicyBrokerRole_Ext with fallback to org contact)
-      COALESCE(
-        broker.brokercontact,
-        orgcontact.name,
-        CONCAT(orgcontact.firstname, ' ', orgcontact.lastname)
-      )                                                               AS brokercontact,
-
-      -- 12. Pricing for Excess Only? (boolean to Yes/No indicator)
-      CASE
-        WHEN pp.wplpricingforexcessonly_ext = true
-          THEN 'Yes'
-        ELSE 'No'
-      END                                                             AS pricingforexcessonly,
-
-      -- 13. Quote Type (from typelist QuoteType, e.g. Quick Quote, Full Application)
-      COALESCE(qtype.name, qtype.typecode)                            AS quotetype,
-
-      -- 14. Energy Trade of Business (EToB)
-      pnirole.wsenergytradeofbusiness_ext                             AS energytradeofbusiness,
-
-      -- WC Exposure Basis & Basis Type (Matches presenter.BasisType from PolicyCenter UI)
-      wc_exposure.exposure_basis                                      AS exposure_basis,
-      wc_exposure.exposure_basistype                                  AS exposure_basistype
-
-    FROM pc10_replication.pc_policyperiod pp
-
-    -- Base Core Job & Status Joins
-    JOIN pc10_replication.pc_job job
-      ON pp.jobid = job.id
-    JOIN pc10_replication.pctl_policyperiodstatus ppstatus
-      ON pp.status = ppstatus.id
-    JOIN pc10_replication.pctl_job jobtype
-      ON job.subtype = jobtype.id
-    LEFT JOIN pc10_replication.pc_policy policy
-      ON pp.policyid = policy.id
-    LEFT JOIN pc10_replication.pc_account act
-      ON policy.accountid = act.id
-    LEFT JOIN pc10_replication.pctl_reasoncode reasoncode
-      ON job.rejectreason = reasoncode.id
-
-    -- Underwriter from Role Assignment (De-fanned via rn = 1)
-    LEFT JOIN (
-      SELECT
-        ura.jobid                                                     AS jobid,
-        CONCAT(c.firstname, ' ', c.lastname)                          AS underwriteractualname,
-        cr.username                                                   AS underwriterusername,
-        ROW_NUMBER() OVER (
-          PARTITION BY ura.jobid
-          ORDER BY ura.assignmentdate DESC NULLS LAST, ura.id DESC
-        ) AS rn
-      FROM pc10_replication.pc_jobuserroleassign ura
-      JOIN pc10_replication.pctl_userrole rt
-        ON ura.role = rt.id AND LOWER(rt.typecode) = 'underwriter'
-      LEFT JOIN pc10_replication.pc_user u
-        ON ura.assigneduserid = u.id
-      LEFT JOIN pc10_replication.pc_contact c
-        ON u.contactid = c.id
-      LEFT JOIN pc10_replication.pc_credential cr
-        ON u.credentialid = cr.id
-    ) uw
-      ON uw.jobid = job.id AND uw.rn = 1
-
-    -- Wholesale Direct Underwriter User on PolicyPeriod (Optional Extension Fallback)
-    LEFT JOIN pc10_replication.pc_user uw_direct_user
-      ON pp.underwriteruser_ext = uw_direct_user.id
-    LEFT JOIN pc10_replication.pc_contact uw_direct_c
-      ON uw_direct_user.contactid = uw_direct_c.id
-    LEFT JOIN pc10_replication.pc_credential uw_direct_cr
-      ON uw_direct_user.credentialid = uw_direct_cr.id
-
-    -- Account Holder (De-fanned via rn = 1)
-    LEFT JOIN (
-      SELECT
-        ahe.ownerid                                                   AS ownerid,
-        c.name                                                        AS contactname,
-        c.firstname                                                   AS firstname,
-        c.lastname                                                    AS lastname,
-        ROW_NUMBER() OVER (
-          PARTITION BY ahe.ownerid
-          ORDER BY ahe.id DESC
-        ) AS rn
-      FROM pc10_replication.pc_acctholderedge ahe
-      JOIN pc10_replication.pc_contact c
-        ON c.id = ahe.foreignentityid
-    ) acctholder
-      ON acctholder.ownerid = act.id AND acctholder.rn = 1
-
-    -- Producer Code & Organization
-    LEFT JOIN pc10_replication.pc_producercode producercode
-      ON pp.producercodeofrecordid = producercode.id
-    LEFT JOIN pc10_replication.pc_organization org
-      ON producercode.organizationid = org.id
-    LEFT JOIN pc10_replication.pc_contact orgcontact
-      ON org.contactid = orgcontact.id
-    LEFT JOIN pc10_replication.pc_address orgaddress
-      ON orgcontact.primaryaddressid = orgaddress.id
-    LEFT JOIN pc10_replication.pctl_state orgaddrstate
-      ON orgaddress.state = orgaddrstate.id
-    LEFT JOIN pc10_replication.pc_address produceraddress
-      ON producercode.addressid = produceraddress.id
-    LEFT JOIN pc10_replication.pctl_state producerstate
-      ON produceraddress.state = producerstate.id
-
-    -- Base State Jurisdiction
-    LEFT JOIN pc10_replication.pctl_jurisdiction jurisdiction
-      ON pp.basestate = jurisdiction.id
-
-    -- Workers' Compensation Covered Employee & Basis Type (De-fanned via rn = 1)
-    -- Matches presenter.BasisType from PolicyCenter UI (Jira XLCDIGFAC-128070)
-    LEFT JOIN (
-      SELECT
-        wcmcovempl.branchid                                           AS branchid,
-        COALESCE(wcmcost.basis, wcmcovempl.wcmpayroll)                AS exposure_basis,
-        CASE
-          -- 1. Number of Part Time Employees (Jira XLCDIGFAC-128070 fix for GWG8002010)
-          WHEN COALESCE(cov.wcmnumberparttimeemplsterm, cov.wcmnumberparttimeempls) IS NOT NULL
-            THEN 'Number of Part Time Employees'
-          -- 2. Number of Full Time Employees (e.g. Domestic Workers 0913)
-          WHEN COALESCE(cov.wcmnumberfulltimeemplsterm, cov.wcmnumberfulltimeempls) IS NOT NULL
-            THEN 'Number of Full Time Employees'
-          -- 3. Number of Volunteers
-          WHEN COALESCE(cov.wcmnumberofvolunteersterm, cov.wcmnumberofvolunteers) IS NOT NULL
-            THEN 'Number of Volunteers'
-          -- 4. Number of Buildings
-          WHEN COALESCE(cov.wcmnumberofbuildingsterm, cov.wcmnumberofbuildings) IS NOT NULL
-            THEN 'Number of Buildings'
-          -- 5. Number of Ambulances Corps
-          WHEN COALESCE(cov.wcmnumberofambulancesterm, cov.wcmnumberofambulances) IS NOT NULL
-            THEN 'Number of Ambulances Corps'
-          -- 6. Number of Weeks in the Program
-          WHEN COALESCE(cov.wcmnumberofweeksinprogramterm, cov.wcmnumberofweeksinprogram) IS NOT NULL
-            THEN 'Number of Weeks in the Program'
-          -- 7. Volunteer Firefighters Population
-          WHEN COALESCE(cov.wcmvolunteerfirefighterspopulationterm, cov.wcmvolunteerfirefighterspopulation) IS NOT NULL
-            THEN 'Volunteer Firefighters Population'
-          -- 8. General Number of Employees
-          WHEN COALESCE(cov.wcmnumberofemplsterm, cov.wcmnumberofempls) IS NOT NULL
-            THEN 'Number of Employees'
-          -- 9. Number of Ginning Locations
-          WHEN COALESCE(cov.wcmnumberofginninglocationterm, cov.wcmnumberofginninglocation) IS NOT NULL
-            THEN 'Number Of Ginning Location'
-          -- 10. Estimated Annual Payroll (Standard rating basis / wcmpayroll)
-          WHEN COALESCE(cov.wcmsubjectpayrollterm, cov.wcmsubjectpayroll) IS NOT NULL
-            OR wcmcovempl.wcmpayroll IS NOT NULL
-            THEN 'Estimated Annual Payroll'
-          ELSE 'Estimated Annual Payroll'
-        END                                                           AS exposure_basistype,
-        ROW_NUMBER() OVER (
-          PARTITION BY wcmcovempl.branchid
-          ORDER BY (
-            CASE
-              WHEN COALESCE(cov.wcmnumberparttimeemplsterm, cov.wcmnumberparttimeempls) IS NOT NULL
-                OR COALESCE(cov.wcmnumberfulltimeemplsterm, cov.wcmnumberfulltimeempls) IS NOT NULL
-                OR COALESCE(cov.wcmnumberofvolunteersterm, cov.wcmnumberofvolunteers) IS NOT NULL
-                OR COALESCE(cov.wcmsubjectpayrollterm, cov.wcmsubjectpayroll) IS NOT NULL
-                OR wcmcovempl.wcmpayroll IS NOT NULL
-                THEN 0
-              ELSE 1
-            END
-          ), wcmcovempl.id DESC
-        ) AS rn
-      FROM pc10_replication.pcx_wcmcoveredemployee wcmcovempl
-      LEFT JOIN pc10_replication.pcx_wcmcoveredemployeecov cov
-        ON cov.branchid = wcmcovempl.branchid
-       AND cov.coveredemployee = wcmcovempl.id
-       AND cov.expirationdate IS NULL
-      LEFT JOIN pc10_replication.pcx_wcmcost wcmcost
-        ON wcmcost.branchid = wcmcovempl.branchid
-       AND wcmcost.coveredemployeecov = cov.fixedid
-       AND wcmcost.expirationdate IS NULL
-      WHERE wcmcovempl.retired = 0
-    ) wc_exposure
-      ON wc_exposure.branchid = pp.id AND wc_exposure.rn = 1
-
-    -- Region & Appetite Mapping Table (De-fanned via rn = 1)
-    LEFT JOIN (
-      SELECT
-        ram.state                                                     AS state,
-        ram.region_ext                                                AS region_ext,
-        ram.appetite_ext                                              AS appetite_ext,
-        ROW_NUMBER() OVER (
-          PARTITION BY ram.state
-          ORDER BY ram.id DESC
-        ) AS rn
-      FROM pc10_replication.pcx_regionappetitemapping_ext ram
-    ) region_appetite_map
-      ON region_appetite_map.state = pp.basestate AND region_appetite_map.rn = 1
-
-    -- Primary Named Insured Role with Wholesale Classifications (De-fanned via rn = 1)
-    LEFT JOIN (
-      SELECT
-        pcr.branchid                                                  AS branchid,
-        ac.contact                                                    AS contact,
-        acr.industry_ext                                              AS industry_ext,
-        acr.sic4code_ext                                              AS sic4code_ext,
-        acr.sic4desc_ext                                              AS sic4desc_ext,
-        acr.naicscode_ext                                             AS naicscode_ext,
-        acr.nacecode_ext                                              AS nacecode_ext,
-        acr.nacedesc_ext                                              AS nacedesc_ext,
-        acr.industryappetite_ext                                      AS industryappetite_ext,
-        acr.classappetite_ext                                         AS classappetite_ext,
-        pcr.wsisoclasscode_ext                                        AS wsisoclasscode_ext,
-        pcr.wssiccode_ext                                             AS wssiccode_ext,
-        pcr.wstradeofbusiness_ext                                     AS wstradeofbusiness_ext,
-        pcr.wsenergytradeofbusiness_ext                               AS wsenergytradeofbusiness_ext,
-        pcr.wsnaicscode_ext                                           AS wsnaicscode_ext,
-        pcr.wsnaicssector_ext                                         AS wsnaicssector_ext,
-        pcr.wsnaicssubsector_ext                                      AS wsnaicssubsector_ext,
-        ROW_NUMBER() OVER (
-          PARTITION BY pcr.branchid, ac.contact
-          ORDER BY (
-            CASE
-              WHEN pcr.wssiccode_ext IS NOT NULL
-                OR pcr.wsnaicscode_ext IS NOT NULL
-                OR pcr.wsisoclasscode_ext IS NOT NULL
-                OR acr.sic4code_ext IS NOT NULL
-                THEN 0
-              ELSE 1
-            END
-          ), pcr.id DESC
-        ) AS rn
-      FROM pc10_replication.pc_policycontactrole pcr
-      JOIN pc10_replication.pc_accountcontactrole acr
-        ON acr.id = pcr.accountcontactrole
-      JOIN pc10_replication.pc_accountcontact ac
-        ON ac.id = acr.accountcontact
-    ) pnirole
-      ON pnirole.branchid = pp.id AND pnirole.contact = pp.pnicontactdenorm AND pnirole.rn = 1
-
-    -- Wholesale Broker Contact Role (PolicyBrokerRole_Ext) (De-fanned via rn = 1)
-    LEFT JOIN (
-      SELECT
-        pcr.branchid                                                  AS branchid,
-        COALESCE(c.name, CONCAT(c.firstname, ' ', c.lastname))        AS brokercontact,
-        ROW_NUMBER() OVER (
-          PARTITION BY pcr.branchid
-          ORDER BY pcr.id DESC
-        ) AS rn
-      FROM pc10_replication.pc_policycontactrole pcr
-      JOIN pc10_replication.pctl_policycontactrole pcrtype
-        ON pcr.subtype = pcrtype.id
-      JOIN pc10_replication.pc_accountcontactrole acr
-        ON acr.id = pcr.accountcontactrole
-      JOIN pc10_replication.pc_accountcontact ac
-        ON ac.id = acr.accountcontact
-      JOIN pc10_replication.pc_contact c
-        ON c.id = ac.contact
-      WHERE LOWER(pcrtype.typecode) IN ('policybrokerrole_ext', 'broker', 'policybroker_ext')
-    ) broker
-      ON broker.branchid = pp.id AND broker.rn = 1
-
-    -- Wholesale Typelist Joins
-    LEFT JOIN pc10_replication.pctl_marketoffering_ext subprod
-      ON pp.subproduct_ext = subprod.id
-    LEFT JOIN pc10_replication.pctl_wplclassification_ext prembucket
-      ON pp.wplpremiumbucket_ext = prembucket.id
-    LEFT JOIN pc10_replication.pctl_wplclassification_ext classbucket
-      ON pp.wplclassificationbucket_ext = classbucket.id
-    LEFT JOIN pc10_replication.pctl_wplpolicytypes_ext poltype
-      ON pp.wplpolicytype_ext = poltype.id
-    LEFT JOIN pc10_replication.pctl_quotetype qtype
-      ON job.quotetype = qtype.id
-
-    -- Base Period Filtering
-    WHERE pp.retired = 0
-      AND pp.temporaryclonestatus IS NULL
-      AND LOWER(jobtype.typecode) IN (
-        'submission',
-        'issuance',
-        'policychange',
-        'rewrite',
-        'rewritenewaccount',
-        'renewal',
-        'cancellation',
-        'reinstatement'
-      )
-  ) base
-) t
-WHERE t.rn = 1
-ORDER BY
-  t.policy_number,
-  t.effective_date ASC,
-  t.job_number ASC;
+WHERE (wcmcost.expirationdate IS NULL OR wcmcost.expirationdate > base.periodstart_raw)
+  AND (wcmcost.effectivedate IS NULL OR wcmcost.expirationdate IS NULL OR wcmcost.effectivedate <> wcmcost.expirationdate)
