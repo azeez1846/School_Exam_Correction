@@ -74,7 +74,11 @@ SELECT
   t.policyperiod_status         AS policy_period_status,
   t.policy_expiration_date      AS policy_expiration_date,
   t.total_premium               AS total_premium,
-  t.lob                         AS lob
+  t.lob                         AS lob,
+
+  -- Workers' Compensation Exposure Basis & Basis Type (Jira XLCDIGFAC-128070)
+  t.exposure_basis              AS exposure_basis,
+  t.exposure_basistype          AS exposure_basistype
 FROM (
   SELECT
     base.eventid                                                    AS eventid,
@@ -123,6 +127,10 @@ FROM (
     base.policy_expiration_date                                     AS policy_expiration_date,
     base.total_premium                                              AS total_premium,
     base.lob                                                        AS lob,
+
+    -- WC Exposure Basis & Basis Type
+    base.exposure_basis                                             AS exposure_basis,
+    base.exposure_basistype                                         AS exposure_basistype,
 
     ROW_NUMBER() OVER (
       PARTITION BY
@@ -182,7 +190,7 @@ FROM (
       COALESCE(
         uw.underwriteractualname,
         uw.underwriterusername,
-        NULLIF(TRIM(CONCAT(uw_direct_c.firstname, ' ', uw_direct_c.lastname)), ''),
+        CONCAT(uw_direct_c.firstname, ' ', uw_direct_c.lastname),
         uw_direct_cr.username
       )                                                               AS underwriterusername,
 
@@ -203,7 +211,7 @@ FROM (
       -- Account Holder
       COALESCE(
         acctholder.contactname,
-        NULLIF(TRIM(CONCAT(acctholder.firstname, ' ', acctholder.lastname)), '')
+        CONCAT(acctholder.firstname, ' ', acctholder.lastname)
       )                                                               AS accountholder,
 
       -- Base State (Jurisdiction)
@@ -292,12 +300,12 @@ FROM (
       COALESCE(
         broker.brokercontact,
         orgcontact.name,
-        NULLIF(TRIM(CONCAT(orgcontact.firstname, ' ', orgcontact.lastname)), '')
+        CONCAT(orgcontact.firstname, ' ', orgcontact.lastname)
       )                                                               AS brokercontact,
 
-      -- 12. Pricing for Excess Only? (bit to Yes/No indicator)
+      -- 12. Pricing for Excess Only? (boolean to Yes/No indicator)
       CASE
-        WHEN CAST(pp.wplpricingforexcessonly_ext AS TEXT) IN ('1', 'true', 't')
+        WHEN pp.wplpricingforexcessonly_ext = true
           THEN 'Yes'
         ELSE 'No'
       END                                                             AS pricingforexcessonly,
@@ -306,7 +314,11 @@ FROM (
       COALESCE(qtype.name, qtype.typecode)                            AS quotetype,
 
       -- 14. Energy Trade of Business (EToB)
-      pnirole.wsenergytradeofbusiness_ext                             AS energytradeofbusiness
+      pnirole.wsenergytradeofbusiness_ext                             AS energytradeofbusiness,
+
+      -- WC Exposure Basis & Basis Type (Matches presenter.BasisType from PolicyCenter UI)
+      wc_exposure.exposure_basis                                      AS exposure_basis,
+      wc_exposure.exposure_basistype                                  AS exposure_basistype
 
     FROM pc10_replication.pc_policyperiod pp
 
@@ -328,7 +340,7 @@ FROM (
     LEFT JOIN (
       SELECT
         ura.jobid                                                     AS jobid,
-        NULLIF(TRIM(CONCAT(c.firstname, ' ', c.lastname)), '')        AS underwriteractualname,
+        CONCAT(c.firstname, ' ', c.lastname)                          AS underwriteractualname,
         cr.username                                                   AS underwriterusername,
         ROW_NUMBER() OVER (
           PARTITION BY ura.jobid
@@ -391,6 +403,73 @@ FROM (
     LEFT JOIN pc10_replication.pctl_jurisdiction jurisdiction
       ON pp.basestate = jurisdiction.id
 
+    -- Workers' Compensation Covered Employee & Basis Type (De-fanned via rn = 1)
+    -- Matches presenter.BasisType from PolicyCenter UI (Jira XLCDIGFAC-128070)
+    LEFT JOIN (
+      SELECT
+        wcmcovempl.branchid                                           AS branchid,
+        COALESCE(wcmcost.basis, wcmcovempl.wcmpayroll)                AS exposure_basis,
+        CASE
+          -- 1. Number of Part Time Employees (Jira XLCDIGFAC-128070 fix for GWG8002010)
+          WHEN COALESCE(cov.wcmnumberparttimeemplsterm, cov.wcmnumberparttimeempls) IS NOT NULL
+            THEN 'Number of Part Time Employees'
+          -- 2. Number of Full Time Employees (e.g. Domestic Workers 0913)
+          WHEN COALESCE(cov.wcmnumberfulltimeemplsterm, cov.wcmnumberfulltimeempls) IS NOT NULL
+            THEN 'Number of Full Time Employees'
+          -- 3. Number of Volunteers
+          WHEN COALESCE(cov.wcmnumberofvolunteersterm, cov.wcmnumberofvolunteers) IS NOT NULL
+            THEN 'Number of Volunteers'
+          -- 4. Number of Buildings
+          WHEN COALESCE(cov.wcmnumberofbuildingsterm, cov.wcmnumberofbuildings) IS NOT NULL
+            THEN 'Number of Buildings'
+          -- 5. Number of Ambulances Corps
+          WHEN COALESCE(cov.wcmnumberofambulancesterm, cov.wcmnumberofambulances) IS NOT NULL
+            THEN 'Number of Ambulances Corps'
+          -- 6. Number of Weeks in the Program
+          WHEN COALESCE(cov.wcmnumberofweeksinprogramterm, cov.wcmnumberofweeksinprogram) IS NOT NULL
+            THEN 'Number of Weeks in the Program'
+          -- 7. Volunteer Firefighters Population
+          WHEN COALESCE(cov.wcmvolunteerfirefighterspopulationterm, cov.wcmvolunteerfirefighterspopulation) IS NOT NULL
+            THEN 'Volunteer Firefighters Population'
+          -- 8. General Number of Employees
+          WHEN COALESCE(cov.wcmnumberofemplsterm, cov.wcmnumberofempls) IS NOT NULL
+            THEN 'Number of Employees'
+          -- 9. Number of Ginning Locations
+          WHEN COALESCE(cov.wcmnumberofginninglocationterm, cov.wcmnumberofginninglocation) IS NOT NULL
+            THEN 'Number Of Ginning Location'
+          -- 10. Estimated Annual Payroll (Standard rating basis / wcmpayroll)
+          WHEN COALESCE(cov.wcmsubjectpayrollterm, cov.wcmsubjectpayroll) IS NOT NULL
+            OR wcmcovempl.wcmpayroll IS NOT NULL
+            THEN 'Estimated Annual Payroll'
+          ELSE 'Estimated Annual Payroll'
+        END                                                           AS exposure_basistype,
+        ROW_NUMBER() OVER (
+          PARTITION BY wcmcovempl.branchid
+          ORDER BY (
+            CASE
+              WHEN COALESCE(cov.wcmnumberparttimeemplsterm, cov.wcmnumberparttimeempls) IS NOT NULL
+                OR COALESCE(cov.wcmnumberfulltimeemplsterm, cov.wcmnumberfulltimeempls) IS NOT NULL
+                OR COALESCE(cov.wcmnumberofvolunteersterm, cov.wcmnumberofvolunteers) IS NOT NULL
+                OR COALESCE(cov.wcmsubjectpayrollterm, cov.wcmsubjectpayroll) IS NOT NULL
+                OR wcmcovempl.wcmpayroll IS NOT NULL
+                THEN 0
+              ELSE 1
+            END
+          ), wcmcovempl.id DESC
+        ) AS rn
+      FROM pc10_replication.pcx_wcmcoveredemployee wcmcovempl
+      LEFT JOIN pc10_replication.pcx_wcmcoveredemployeecov cov
+        ON cov.branchid = wcmcovempl.branchid
+       AND cov.coveredemployee = wcmcovempl.id
+       AND cov.expirationdate IS NULL
+      LEFT JOIN pc10_replication.pcx_wcmcost wcmcost
+        ON wcmcost.branchid = wcmcovempl.branchid
+       AND wcmcost.coveredemployeecov = cov.fixedid
+       AND wcmcost.expirationdate IS NULL
+      WHERE wcmcovempl.retired = 0
+    ) wc_exposure
+      ON wc_exposure.branchid = pp.id AND wc_exposure.rn = 1
+
     -- Region & Appetite Mapping Table (De-fanned via rn = 1)
     LEFT JOIN (
       SELECT
@@ -450,7 +529,7 @@ FROM (
     LEFT JOIN (
       SELECT
         pcr.branchid                                                  AS branchid,
-        COALESCE(c.name, NULLIF(TRIM(CONCAT(c.firstname, ' ', c.lastname)), '')) AS brokercontact,
+        COALESCE(c.name, CONCAT(c.firstname, ' ', c.lastname))        AS brokercontact,
         ROW_NUMBER() OVER (
           PARTITION BY pcr.branchid
           ORDER BY pcr.id DESC
