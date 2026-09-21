@@ -49,37 +49,43 @@ SELECT
   END AS class_description,
   wcmcost.basis::decimal(38, 2) AS exposure_basis,
   -- Matches presenter.BasisType from PolicyCenter UI (Jira XLCDIGFAC-128070)
+  -- Uses exact Code Identifiers from Product Designer for Class Coverage [WCMClass]
   CASE 
-    -- 1. Number of Part Time Employees (Fixes Policy GWG8002010)
-    WHEN COALESCE(coveredemployeecov.wcmnumberparttimeemplsterm, coveredemployeecov.wcmnumberparttimeempls) IS NOT NULL 
+    -- 1. Number of Part Time Employees (Code: WCMNumberPartTimeEmpls - Fixes Policy GWG8002010)
+    WHEN coveredemployeecov.wcmnumberparttimeempls IS NOT NULL AND coveredemployeecov.wcmnumberparttimeempls != 0 
       THEN 'Number of Part Time Employees'
-    -- 2. Number of Full Time Employees (e.g., Domestic Workers 0913)
-    WHEN COALESCE(coveredemployeecov.wcmnumberfulltimeemplsterm, coveredemployeecov.wcmnumberfulltimeempls) IS NOT NULL 
+    -- 2. Number of Full Time Employees (Code: WCMNumberFullTimeEmpls - e.g., Domestic Workers 0913)
+    WHEN coveredemployeecov.wcmnumberfulltimeempls IS NOT NULL AND coveredemployeecov.wcmnumberfulltimeempls != 0 
       THEN 'Number of Full Time Employees'
-    -- 3. Number of Volunteers
-    WHEN COALESCE(coveredemployeecov.wcmnumberofvolunteersterm, coveredemployeecov.wcmnumberofvolunteers) IS NOT NULL 
+    -- 3. Number of Volunteers (Code: WCMNumberOfVolunteers)
+    WHEN coveredemployeecov.wcmnumberofvolunteers IS NOT NULL AND coveredemployeecov.wcmnumberofvolunteers != 0 
       THEN 'Number of Volunteers'
-    -- 4. Number of Buildings
-    WHEN COALESCE(coveredemployeecov.wcmnumberofbuildingsterm, coveredemployeecov.wcmnumberofbuildings) IS NOT NULL 
+    -- 4. Number of Buildings (Code: WCMNumberOfBuildings)
+    WHEN coveredemployeecov.wcmnumberofbuildings IS NOT NULL AND coveredemployeecov.wcmnumberofbuildings != 0 
       THEN 'Number of Buildings'
-    -- 5. Number of Ambulances Corps
-    WHEN COALESCE(coveredemployeecov.wcmnumberofambulancesterm, coveredemployeecov.wcmnumberofambulances) IS NOT NULL 
+    -- 5. Number of Ambulances Corps (Code: WCMNumberOfAmbulances)
+    WHEN coveredemployeecov.wcmnumberofambulances IS NOT NULL AND coveredemployeecov.wcmnumberofambulances != 0 
       THEN 'Number of Ambulances Corps'
-    -- 6. Number of Weeks in the Program
-    WHEN COALESCE(coveredemployeecov.wcmnumberofweeksinprogramterm, coveredemployeecov.wcmnumberofweeksinprogram) IS NOT NULL 
+    -- 6. Number of Weeks in the Program (Code: WCMNumberOfWeeksInTheProgram)
+    WHEN coveredemployeecov.wcmnumberofweeksintheprogram IS NOT NULL AND coveredemployeecov.wcmnumberofweeksintheprogram != 0 
       THEN 'Number of Weeks in the Program'
-    -- 7. Volunteer Firefighters Population
-    WHEN COALESCE(coveredemployeecov.wcmvolunteerfirefighterspopulationterm, coveredemployeecov.wcmvolunteerfirefighterspopulation) IS NOT NULL 
+    -- 7. Volunteer Firefighters Population (Code: WCMVolunteerFirefightersPopulation)
+    WHEN coveredemployeecov.wcmvolunteerfirefighterspopulation IS NOT NULL AND coveredemployeecov.wcmvolunteerfirefighterspopulation != 0 
       THEN 'Volunteer Firefighters Population'
-    -- 8. Number of Employees
-    WHEN COALESCE(coveredemployeecov.wcmnumberofemplsterm, coveredemployeecov.wcmnumberofempls) IS NOT NULL 
+    -- 8. Number of Employees (Code: WCMNumberOfEmpls)
+    WHEN coveredemployeecov.wcmnumberofempls IS NOT NULL AND coveredemployeecov.wcmnumberofempls != 0 
       THEN 'Number of Employees'
-    -- 9. Number of Ginning Locations
-    WHEN COALESCE(coveredemployeecov.wcmnumberofginninglocationterm, coveredemployeecov.wcmnumberofginninglocation) IS NOT NULL 
+    -- 9. Number Of Ginning Location (Code: WCMNumberOfGinningLocation)
+    WHEN coveredemployeecov.wcmnumberofginninglocation IS NOT NULL AND coveredemployeecov.wcmnumberofginninglocation != 0 
       THEN 'Number Of Ginning Location'
-    -- 10. Estimated Annual Payroll (Standard rating basis / wcmpayroll)
-    WHEN COALESCE(coveredemployeecov.wcmsubjectpayrollterm, coveredemployeecov.wcmsubjectpayroll) IS NOT NULL
-      OR wcmcovempl.wcmpayroll IS NOT NULL
+    -- 10. Number of Hazardous Materials Response Teams (Code: WCMNumberOfHazardousMaterialsResponseTeams)
+    WHEN coveredemployeecov.wcmnumberofhazardousmaterialsresponseteams IS NOT NULL AND coveredemployeecov.wcmnumberofhazardousmaterialsresponseteams != 0 
+      THEN 'Number of Hazardous Materials Response Teams'
+    -- 11. USLH Subject Payroll (Code: WCMSubjectPayroll)
+    WHEN coveredemployeecov.wcmsubjectpayroll IS NOT NULL AND coveredemployeecov.wcmsubjectpayroll != 0 
+      THEN 'Estimated Annual Payroll'
+    -- Standard rating basis fallback (wcmpayroll or WCMClassClassCode)
+    WHEN wcmcovempl.wcmpayroll IS NOT NULL
       OR COALESCE(clausepattern.patternid, clausepattern_fallback.patternid) = 'WCMClassClassCode'
       THEN 'Estimated Annual Payroll'
     ELSE 'Estimated Annual Payroll' 
