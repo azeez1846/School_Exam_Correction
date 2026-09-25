@@ -1,0 +1,59 @@
+Here are two draft options you can use. 
+
+Peter already mentioned: *“If this is a calculated field than that is fine to exclude”*, but he is assuming there is a simple lookup table behind it. The reply needs to clarify that it is not a flat lookup table, but rather complex, dynamic XML/product logic.
+
+---
+
+### Option 1: Detailed & Professional (Recommended for "Reply All" to Peter & Team)
+
+> **Subject:** RE: GW MM Auto/WC Exposure reports - challenges with exposure basis type for WC
+>
+> Hi Peter,
+>
+> To follow up on your query regarding the lookup table:
+>
+> Unfortunately, there is no static mapping or database lookup table that links Class Code directly to Exposure Basis. 
+>
+> Here is why extracting or sharing a mapping table is not feasible:
+>
+> 1. **Dynamic / Calculated Field:** Exposure Basis is calculated dynamically at runtime in the Guidewire application layer and is **not persisted** or stored in any database table.
+> 2. **Rule-Based & Conditional (Not 1-to-1):** The exposure basis, class description, and coverages are not a flat 1:1 lookup. They depend on dynamic conditional logic (such as `postOnChange` triggers, coverage selection, state/jurisdiction, and product model rules configured across thousands of class codes in the system XML files).
+> 3. **No Direct Extract Available:** Because this logic is evaluated through application code rather than a relational table, there is no flat matrix or reference table in the system that we can extract or append to the report.
+>
+> Since this is a dynamic runtime calculation as you noted earlier, the best path forward would be to proceed with **excluding the Exposure Basis Type field from the WC Exposure report**.
+>
+> Please let us know if you have any questions or if you would like to discuss further.
+>
+> Best regards,  
+> **Azeez Mohammed Mohiuddin**
+
+---
+
+### Option 2: Short & Direct
+
+> **Subject:** RE: GW MM Auto/WC Exposure reports - challenges with exposure basis type for WC
+>
+> Hi Peter,
+>
+> Regarding the lookup:
+>
+> There is no static lookup table or database mapping of Class Code to Exposure Basis that we can extract. 
+>
+> In Guidewire, there are thousands of class codes maintained across system XML files, and the exposure basis/coverage details are evaluated dynamically at runtime via `postOnChange` conditional logic and product model rules. Since this value is strictly dynamic and never stored in a database table, a simple 1:1 mapping table does not exist.
+>
+> Given this, we recommend proceeding with excluding the Exposure Basis Type from the WC report as previously discussed. 
+>
+> Thanks & regards,  
+> **Azeez Mohammed Mohiuddin**
+
+---
+
+### (Optional) Internal note to Chaitanya first (if you prefer him to respond to Peter):
+
+> Hi Chaitanya,
+>
+> Regarding Peter’s request: a static lookup does not exist. 
+> 
+> In Guidewire, there are thousands of class codes configured in XML files, and the class description, coverage, and exposure basis are determined dynamically at runtime based on `postOnChange` conditions and product designer logic. It is not stored in any database table, nor is it a flat 1:1 mapping that can be extracted into an Excel/table format.
+> 
+> We should inform Peter that extracting a mapping is not feasible and recommend confirming the exclusion of this field from the report.
