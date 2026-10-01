@@ -1,168 +1,110 @@
--- =========================================================================================
--- DATASET 2: wcm_gradient_extract
--- Purpose: This query joins the pre-materialized "wcm_policy_base" dataset to the massive
--- Cost and Coverage tables. Because the base policy data is already computed, the
--- database engine can process this query in parallel without timing out.
--- INSTRUCTIONS: Run this query in Data Studio ONLY AFTER publishing "wcm_policy_base".
--- =========================================================================================
-
-SELECT 
-  base.accountname AS accountname,
-  base.policy_number AS policy_number,
-  base.transaction AS transaction,
-  base.submission_number AS submission_number,
-  base.effective_date AS effective_date,
-  base.expiration_date AS expiration_date,
-  base.termnumber AS termnumber,
-  base.plob AS plob,
-  base.base_state AS base_state,
-  base.underwriting_company AS underwriting_company,
-  base.underwriter AS underwriter,
-  base.producer AS producer,
-  base.policyperiodstatus AS policyperiodstatus,
-  base.policystatus AS policystatus,
-  base.industry AS industry,
-  base.sic2 AS sic2,
-  base.sic2_desc AS sic2_desc,
-  base.sic4 AS sic4,
-  base.sic4_desc AS sic4_desc,
-  base.naics_code AS naics_code,
-  base.naics_desc AS naics_desc,
-  base.each_accident_limit AS each_accident_limit,
-  base.disease_each_employee_limit AS disease_each_employee_limit,
-  base.disease_policy_limit AS disease_policy_limit,
+SELECT
+  rbd.accountname AS accountname,
+  rbd.policy_number AS policy_number,
+  rbd.transaction AS transaction,
+  rbd.submission_number AS submission_number,
+  rbd.effective_date AS effective_date,
+  rbd.expiration_date AS expiration_date,
+  rbd.termnumber AS termnumber,
+  rbd.plob AS plob,
+  rbd.base_state AS base_state,
+  rbd.underwriting_company AS underwriting_company,
+  rbd.underwriter AS underwriter,
+  rbd.producer AS producer,
+  rbd.policyperiodstatus AS policyperiodstatus,
+  rbd.policystatus AS policystatus,
+  rbd.industry AS industry,
+  rbd.sic2 AS sic2,
+  rbd.sic2_desc AS sic2_desc,
+  rbd.sic4 AS sic4,
+  rbd.sic4_desc AS sic4_desc,
+  rbd.naics_code AS naics_code,
+  rbd.naics_desc AS naics_desc,
   CASE 
-    WHEN coststate.typecode IS NOT NULL THEN coststate.typecode::varchar(2) 
-    ELSE base.base_state 
-  END AS rated_state,
+    WHEN rbd.base_state = 'NY' AND COALESCE(rbd.location_count, 1) <= 1 THEN 'Unlimited'
+    ELSE rbd.each_accident_limit 
+  END AS each_accident_limit,
   CASE 
-    WHEN wcmcovempl.wcmselectby LIKE '%Description%' THEN wcmcovempl.wcmclasscodebyclassdescription 
-    WHEN wcmcovempl.wcmclasscodeforclassdescriptio IS NOT NULL THEN wcmcovempl.wcmclasscodeforclassdescriptio 
-    WHEN statrecord.id IS NOT NULL THEN statrecord.classcode 
-    ELSE '' 
-  END AS class_code,
+    WHEN rbd.base_state = 'NY' AND COALESCE(rbd.location_count, 1) <= 1 THEN 'Unlimited'
+    ELSE rbd.disease_each_employee_limit 
+  END AS disease_each_employee_limit,
   CASE 
-    WHEN COALESCE(clausepattern.patternid, clausepattern_fallback.patternid) = 'WCMClassClassCode' THEN concat(coalesce(wcmcovempl.wcmgoverninglaw, ''), '-', coalesce(wcmcovempl.wcmclassdescriptionbyclasscode, wcmcovempl.wcmclassdescriptionforclasscod)) 
-    WHEN COALESCE(clausepattern.name, clausepattern_fallback.name) IS NOT NULL THEN COALESCE(clausepattern.name, clausepattern_fallback.name) 
-    WHEN COALESCE(clausepattern.name, clausepattern_fallback.name) IS NULL AND wcmcost.actualamount < 0 THEN 'Premium Discount' 
-    ELSE NULL 
-  END AS class_description,
-  wcmcost.basis::decimal(38, 2) AS exposure_basis,
-  -- Matches presenter.BasisType from PolicyCenter UI (Jira XLCDIGFAC-128070)
-  -- 100% Data-Driven: Maps Product Designer sequences for Class Coverage [WCMClass] to APD direct terms (directtermX)
-  -- Evaluates non-payroll basis coverage terms first (e.g. part-time, full-time), exactly like WCMCoveredEmployeePresenter.gs
-  CASE 
-    -- 1. Number of Part Time Employees (WCMNumberPartTimeEmpls, Sequence 8 -> directterm8 - Fixes Policy GWG8002010)
-    WHEN COALESCE(wcmclasscov.directterm8, coveredemployeecov.directterm8) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm8, coveredemployeecov.directterm8) != 0 
-      THEN 'Number of Part Time Employees'
-    -- 2. Number of Full Time Employees (WCMNumberFullTimeEmpls, Sequence 7 -> directterm7 - e.g. Domestic Workers 0913)
-    WHEN COALESCE(wcmclasscov.directterm7, coveredemployeecov.directterm7) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm7, coveredemployeecov.directterm7) != 0 
-      THEN 'Number of Full Time Employees'
-    -- 3. Number of Volunteers (WCMNumberOfVolunteers, Sequence 6 -> directterm6)
-    WHEN COALESCE(wcmclasscov.directterm6, coveredemployeecov.directterm6) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm6, coveredemployeecov.directterm6) != 0 
-      THEN 'Number of Volunteers'
-    -- 4. Volunteer Firefighters Population (WCMVolunteerFirefightersPopulation, Sequence 18 -> directterm18)
-    WHEN COALESCE(wcmclasscov.directterm18, coveredemployeecov.directterm18) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm18, coveredemployeecov.directterm18) != 0 
-      THEN 'Volunteer Firefighters Population'
-    -- 5. Number of Employees (WCMNumberOfEmpls, Sequence 16 -> directterm16)
-    WHEN COALESCE(wcmclasscov.directterm16, coveredemployeecov.directterm16) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm16, coveredemployeecov.directterm16) != 0 
-      THEN 'Number of Employees'
-    -- 6. Number of Weeks in the Program (WCMNumberOfWeeksInTheProgram, Sequence 17 -> directterm17)
-    WHEN COALESCE(wcmclasscov.directterm17, coveredemployeecov.directterm17) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm17, coveredemployeecov.directterm17) != 0 
-      THEN 'Number of Weeks in the Program'
-    -- 7. Number of Ambulances Corps (WCMNumberOfAmbulances, Sequence 19 -> directterm19)
-    WHEN COALESCE(wcmclasscov.directterm19, coveredemployeecov.directterm19) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm19, coveredemployeecov.directterm19) != 0 
-      THEN 'Number of Ambulances Corps'
-    -- 8. Number of Hazardous Materials Response Teams (WCMNumberOfHazardousMaterialsResponseTeams, Sequence 20 -> directterm20)
-    WHEN COALESCE(wcmclasscov.directterm20, coveredemployeecov.directterm20) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm20, coveredemployeecov.directterm20) != 0 
-      THEN 'Number of Hazardous Materials Response Teams'
-    -- 9. Number of Buildings (WCMNumberOfBuildings, Sequence 21 -> directterm21)
-    WHEN COALESCE(wcmclasscov.directterm21, coveredemployeecov.directterm21) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm21, coveredemployeecov.directterm21) != 0 
-      THEN 'Number of Buildings'
-    -- 10. Number Of Ginning Location (WCMNumberOfGinningLocation, Sequence 1 -> directterm1)
-    WHEN COALESCE(wcmclasscov.directterm1, coveredemployeecov.directterm1) IS NOT NULL 
-     AND COALESCE(wcmclasscov.directterm1, coveredemployeecov.directterm1) != 0 
-      THEN 'Number Of Ginning Location'
-    -- 11. Standard Payroll rating basis fallback (wcmpayroll or WCMClassClassCode)
-    WHEN wcmcovempl.id IS NOT NULL
-      OR COALESCE(clausepattern.patternid, clausepattern_fallback.patternid) = 'WCMClassClassCode'
-      THEN 'Estimated Annual Payroll'
-    ELSE '' 
-  END AS exposure_basistype,
-  wcmcost.actualadjrate::decimal(38, 4) AS rate,
-  wcmcost.actualamount AS premium,
-  base.total_policy_premium,
-  COALESCE(
-    CONCAT(COALESCE(polloc.locationnum, NULL), ':', COALESCE(polloc.addressline1internal, NULL), ',', COALESCE(polloc.cityinternal, NULL), ',', COALESCE(coststate.typecode, NULL), ',', COALESCE(polloc.postalcodeinternal, NULL)), 
-    CONCAT(COALESCE(polloc.locationnum, NULL), ':', COALESCE(coststate.typecode, NULL))
-  ) AS location_full,
-  polloc.locationnum AS location_number,
-  polloc.cityinternal AS city_town,
-  polloc.countyinternal AS county,
-  polloc.postalcodeinternal AS zipcode,
-  wcmloc.wcmnumberofempls AS number_of_employees,
-  
-  -- PRIMARY KEY & ORDER BY SAFEGUARDS FOR DATA STUDIO 
-  base.publicid AS publicid,
-  COALESCE(wcmcost.publicid::varchar, base.publicid) AS costpublicid,
-  COALESCE(wcmcost.updatetime, base.updatetime) AS costupdatetime,
-  
-  'Cost' AS recordtype
-
-FROM pc10_replication.pc_wcmcost wcmcost
-  
-  -- 1. JOIN TO OUR PRE-MATERIALIZED BASE DATASET
-  JOIN wcm_policy_base.wcm_policy_base base ON base.policyperiod_id = wcmcost.branchid
-  
-  LEFT JOIN pc10_replication.pctl_jurisdiction coststate ON coststate.id = wcmcost.state
-  
-  -- 2. COVERAGES & SCHEDULES (Temporal Joins using base.periodstart_raw)
-  LEFT JOIN pc10_replication.pcx_wcmcoveredemployeecov coveredemployeecov ON coveredemployeecov.branchid = wcmcost.branchid AND coveredemployeecov.fixedid = wcmcost.coveredemployeecov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(coveredemployeecov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(coveredemployeecov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmlocationcov locationcov ON locationcov.branchid = wcmcost.branchid AND locationcov.fixedid = wcmcost.locationcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(locationcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(locationcov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmjurisdictioncov jurisdictioncov ON jurisdictioncov.branchid = wcmcost.branchid AND jurisdictioncov.fixedid = wcmcost.jurisdictioncov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(jurisdictioncov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(jurisdictioncov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmmanuscriptoptioncov wcmmanuscriptoptioncov ON wcmmanuscriptoptioncov.branchid = wcmcost.branchid AND wcmmanuscriptoptioncov.fixedid = wcmcost.wcmmanuscriptoptioncov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(wcmmanuscriptoptioncov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(wcmmanuscriptoptioncov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmjurisdictioncond wcmjurisdictioncond ON wcmjurisdictioncond.branchid = wcmcost.branchid AND wcmjurisdictioncond.fixedid = wcmcost.jurisdictioncond AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(wcmjurisdictioncond.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(wcmjurisdictioncond.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmlineschedcovitemcov lineschedcovitemcov ON lineschedcovitemcov.branchid = wcmcost.branchid AND lineschedcovitemcov.fixedid = wcmcost.lineschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(lineschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(lineschedcovitemcov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmlocschedcovitemcov locschedcovitemcov ON locschedcovitemcov.branchid = wcmcost.branchid AND locschedcovitemcov.fixedid = wcmcost.locschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(locschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(locschedcovitemcov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmworkerscomplinecov workerscomplinecov ON workerscomplinecov.branchid = wcmcost.branchid AND workerscomplinecov.fixedid = wcmcost.workerscomplinecov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(workerscomplinecov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(workerscomplinecov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmjurisschedcovitemcov jurisschedcovitemcov ON jurisschedcovitemcov.branchid = wcmcost.branchid AND jurisschedcovitemcov.fixedid = wcmcost.jurisschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(jurisschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(jurisschedcovitemcov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmcovempschedcovitemcov covempschedcovitemcov ON covempschedcovitemcov.branchid = wcmcost.branchid AND covempschedcovitemcov.fixedid = wcmcost.covempschedcovitemcov AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(covempschedcovitemcov.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(covempschedcovitemcov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmcovempschedcovitem covEmpschedCovItem ON covempschedcovitem.branchid = wcmcost.branchid AND covempschedcovitem.fixedid = wcmcost.covempschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(covempschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(covempschedcovitem.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmjurisschedcovitem jurisschedCovItem ON jurisschedcovitem.branchid = wcmcost.branchid AND jurisschedcovitem.fixedid = wcmcost.jurisschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(jurisschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(jurisschedcovitem.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmlineschedcovitem lineSchedCovItem ON lineschedcovitem.branchid = wcmcost.branchid AND lineschedcovitem.fixedid = wcmcost.lineschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(lineschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(lineschedcovitem.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmlocschedcovitem locschedCovItem ON locschedcovitem.branchid = wcmcost.branchid AND locschedcovitem.fixedid = wcmcost.locschedcovitem AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(locschedcovitem.effectivedate, base.periodstart_raw) AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(locschedcovitem.expirationdate, base.periodend_raw)
-  
-  -- 3. MISCELLANEOUS DATA
-  LEFT JOIN pc10_replication.pcx_wcmcoveredemployee wcmcovEmpl 
-    ON (wcmcovempl.id = coveredemployeecov.coveredemployee OR wcmcovempl.fixedid = coveredemployeecov.coveredemployee)
-  LEFT JOIN pc10_replication.pcx_wcmcoveredemployeecov wcmclasscov 
-    ON wcmclasscov.branchid = wcmcost.branchid 
-   AND (wcmclasscov.coveredemployee = wcmcovempl.id OR wcmclasscov.coveredemployee = wcmcovempl.fixedid)
-   AND wcmclasscov.patterncode = 'WCMClass'
-   AND coalesce(wcmcost.effectivedate, base.periodstart_raw) >= coalesce(wcmclasscov.effectivedate, base.periodstart_raw) 
-   AND coalesce(wcmcost.effectivedate, base.periodstart_raw) < coalesce(wcmclasscov.expirationdate, base.periodend_raw)
-  LEFT JOIN pc10_replication.pcx_wcmlocation wcmloc ON wcmloc.id = wcmcovempl.location
-  LEFT JOIN pc10_replication.pc_policylocation polloc ON wcmloc.policylocation = polloc.id
-  
-  -- 4. OPTIMIZED PATTERN AND STAT RECORD JOINS
-  -- By using two separate LEFT JOINs instead of an 'OR' condition, we maintain lightning-fast Hash/Merge joins
-  LEFT JOIN pc10_replication.pc_etlclausepattern clausepattern 
-    ON clausepattern.codeidentifier = COALESCE(wcmjurisdictioncond.patterncode, covempschedcovitemcov.patterncode, locationcov.patterncode, jurisdictioncov.patterncode, wcmmanuscriptoptioncov.patterncode, lineschedcovitemcov.patterncode, locschedcovitemcov.patterncode, workerscomplinecov.patterncode, coveredemployeecov.patterncode, jurisschedcovitemcov.patterncode)
-    
-  LEFT JOIN pc10_replication.pc_etlclausepattern clausepattern_fallback 
-    ON clausepattern_fallback.patternid = COALESCE(wcmjurisdictioncond.patterncode, covempschedcovitemcov.patterncode, locationcov.patterncode, jurisdictioncov.patterncode, wcmmanuscriptoptioncov.patterncode, lineschedcovitemcov.patterncode, locschedcovitemcov.patterncode, workerscomplinecov.patterncode, coveredemployeecov.patterncode, jurisschedcovitemcov.patterncode)
-    
-  LEFT JOIN pc10_replication.pcx_wcmstatrecord statrecord 
-    ON statrecord.id = COALESCE(wcmjurisdictioncond.statrecord, covempschedcovitemcov.statrecord, locationcov.statrecord, jurisdictioncov.statrecord, lineschedcovitemcov.statrecord, locschedcovitemcov.statrecord, workerscomplinecov.statrecord, coveredemployeecov.statrecord, jurisschedcovitemcov.statrecord)
-
-WHERE (wcmcost.expirationdate IS NULL OR wcmcost.expirationdate > base.periodstart_raw)
-  AND (wcmcost.effectivedate IS NULL OR wcmcost.expirationdate IS NULL OR wcmcost.effectivedate <> wcmcost.expirationdate)
+    WHEN rbd.base_state = 'NY' AND COALESCE(rbd.location_count, 1) <= 1 THEN 'Unlimited'
+    ELSE rbd.disease_policy_limit 
+  END AS disease_policy_limit,
+  rbd.total_policy_premium AS total_policy_premium,
+  rbd.publicid AS publicid,
+  rbd.policyperiod_id AS policyperiod_id,
+  rbd.updatetime AS updatetime,
+  rbd.periodstart AS periodstart,
+  rbd.periodend AS periodend
+FROM
+  (SELECT
+    contact.name AS accountname,
+    pp.policynumber AS policy_number,
+    jobsubtype.name AS transaction,
+    job.jobnumber AS submission_number,
+    pp.periodstart AS effective_date,
+    pp.periodend AS expiration_date,
+    pp.termnumber AS termnumber,
+    pol.productcode AS plob,
+    ppstate.typecode::varchar (2) AS base_state,
+    uwcompany.name AS underwriting_company,
+    polperuw.uwactualname AS underwriter,
+    org.namedenorm AS producer,
+    ppstatus.typecode AS policyperiodstatus,
+    CASE WHEN ppstatus.typecode != 'Bound' THEN ppstatus.name WHEN pp.cancellationdate IS NOT NULL THEN 'Canceled' WHEN CURRENT_DATE() < pp.periodstart THEN 'Scheduled' WHEN CURRENT_DATE() >= pp.periodend THEN 'Expired' ELSE 'In Force' END AS policystatus,
+    indtyp.typecode AS industry,
+    acr.sic2code_ext AS sic2,
+    acr.sic2desc_ext AS sic2_desc,
+    acr.sic4code_ext AS sic4,
+    acr.sic4desc_ext AS sic4_desc,
+    acr.naicscode_ext AS naics_code,
+    acr.naicsdesc_ext AS naics_desc,
+    policyline.wcmlineeachaccidentlim::varchar AS each_accident_limit,
+    policyline.wcmlinediseaseeachempllim::varchar AS disease_each_employee_limit,
+    policyline.wcmlinediseasepolicylim::varchar AS disease_policy_limit,
+    COALESCE(polloc_cnt.location_count, 1) AS location_count,
+    pp.totalcostrpt AS total_policy_premium,
+    pp.id AS policyperiod_id,
+    pp.publicid AS publicid,
+    pp.updatetime AS updatetime,
+    pp.periodstart AS periodstart,
+    pp.periodend AS periodend,
+    ROW_NUMBER() OVER (PARTITION BY pp.publicid ORDER BY CASE WHEN acr.sic2code_ext IS NOT NULL THEN 1 ELSE 0 END DESC, acr.updatetime DESC) AS row_num
+  FROM
+    pc10_replication.pc_policyperiod pp
+    JOIN pc10_replication.pc_policy pol ON pol.id = pp.policyid AND pol.productcode = 'WCMWorkersComp'
+    LEFT JOIN polperuw.polperuw polperuw ON pp.periodid = polperuw.periodid AND pp.branchnumber = polperuw.branchnumber AND pp.jobid = polperuw.jobid
+    JOIN pc10_replication.pc_policyline policyline ON policyline.branchid = pp.id
+    JOIN pc10_replication.pc_job job ON pp.jobid = job.id
+    LEFT JOIN pc10_replication.pctl_policysource_ext polsource ON polsource.id = pol.policysource_ext
+    LEFT JOIN pc10_replication.pc_jobpolicyperiod jpp ON pp.id = jpp.ownerid
+    JOIN pc10_replication.pctl_job jobsubtype ON job.subtype = jobsubtype.id
+    LEFT JOIN pc_acctholderedge_curation.pc_acctholderedge_curation ah ON pol.accountid = ah.ownerid
+    LEFT JOIN pc10_replication.pc_acctholderedge ahe ON ahe.id = ah.id
+    LEFT JOIN pc10_replication.pc_contact contact ON ahe.foreignentityid = contact.id
+    LEFT JOIN pc10_replication.pc_uwcompany uwcompany ON pp.uwcompany = uwcompany.id
+    JOIN pc10_replication.pc_account account ON pol.accountid = account.id
+    JOIN pc10_replication.pctl_policyperiodstatus ppstatus ON ppstatus.id = pp.status
+    LEFT JOIN pc10_replication.pctl_jurisdiction ppState ON pp.basestate = ppstate.id
+    JOIN pc10_replication.pc_contact con ON con.id = pp.pnicontactdenorm
+    JOIN pc10_replication.pc_accountcontact ac ON ac.contact = con.id
+    JOIN pc10_replication.pc_accountcontactrole acr ON acr.accountcontact = ac.id
+    LEFT JOIN pc10_replication.pctl_industry_ext indtyp ON indtyp.id = acr.industry_ext
+    LEFT JOIN pc10_replication.pc_producercode producercode ON pp.producercodeofrecordid = producercode.id
+    LEFT JOIN pc10_replication.pc_organization org ON producercode.organizationid = org.id
+    LEFT JOIN pc10_replication.pc_contact orgContact ON orgcontact.id = org.contactid
+    LEFT JOIN (
+      SELECT 
+        pl.branchid,
+        COALESCE(
+          NULLIF(COUNT(DISTINCT CASE WHEN pl.expirationdate IS NULL THEN pl.locationnum END), 0),
+          COUNT(DISTINCT pl.locationnum)
+        ) AS location_count
+      FROM pc10_replication.pc_policylocation pl
+      GROUP BY pl.branchid
+    ) polloc_cnt ON polloc_cnt.branchid = pp.id
+  ) rbd
+WHERE rbd.row_num = 1
+ORDER BY rbd.updatetime DESC;
