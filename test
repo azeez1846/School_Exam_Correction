@@ -1,110 +1,96 @@
-SELECT
-  rbd.accountname AS accountname,
-  rbd.policy_number AS policy_number,
-  rbd.transaction AS transaction,
-  rbd.submission_number AS submission_number,
-  rbd.effective_date AS effective_date,
-  rbd.expiration_date AS expiration_date,
-  rbd.termnumber AS termnumber,
-  rbd.plob AS plob,
-  rbd.base_state AS base_state,
-  rbd.underwriting_company AS underwriting_company,
-  rbd.underwriter AS underwriter,
-  rbd.producer AS producer,
-  rbd.policyperiodstatus AS policyperiodstatus,
-  rbd.policystatus AS policystatus,
-  rbd.industry AS industry,
-  rbd.sic2 AS sic2,
-  rbd.sic2_desc AS sic2_desc,
-  rbd.sic4 AS sic4,
-  rbd.sic4_desc AS sic4_desc,
-  rbd.naics_code AS naics_code,
-  rbd.naics_desc AS naics_desc,
-  CASE 
-    WHEN rbd.base_state = 'NY' AND COALESCE(rbd.location_count, 1) <= 1 THEN 'Unlimited'
-    ELSE rbd.each_accident_limit 
-  END AS each_accident_limit,
-  CASE 
-    WHEN rbd.base_state = 'NY' AND COALESCE(rbd.location_count, 1) <= 1 THEN 'Unlimited'
-    ELSE rbd.disease_each_employee_limit 
-  END AS disease_each_employee_limit,
-  CASE 
-    WHEN rbd.base_state = 'NY' AND COALESCE(rbd.location_count, 1) <= 1 THEN 'Unlimited'
-    ELSE rbd.disease_policy_limit 
-  END AS disease_policy_limit,
-  rbd.total_policy_premium AS total_policy_premium,
-  rbd.publicid AS publicid,
-  rbd.policyperiod_id AS policyperiod_id,
-  rbd.updatetime AS updatetime,
-  rbd.periodstart AS periodstart,
-  rbd.periodend AS periodend
-FROM
-  (SELECT
-    contact.name AS accountname,
-    pp.policynumber AS policy_number,
-    jobsubtype.name AS transaction,
-    job.jobnumber AS submission_number,
-    pp.periodstart AS effective_date,
-    pp.periodend AS expiration_date,
-    pp.termnumber AS termnumber,
-    pol.productcode AS plob,
-    ppstate.typecode::varchar (2) AS base_state,
-    uwcompany.name AS underwriting_company,
-    polperuw.uwactualname AS underwriter,
-    org.namedenorm AS producer,
-    ppstatus.typecode AS policyperiodstatus,
-    CASE WHEN ppstatus.typecode != 'Bound' THEN ppstatus.name WHEN pp.cancellationdate IS NOT NULL THEN 'Canceled' WHEN CURRENT_DATE() < pp.periodstart THEN 'Scheduled' WHEN CURRENT_DATE() >= pp.periodend THEN 'Expired' ELSE 'In Force' END AS policystatus,
-    indtyp.typecode AS industry,
-    acr.sic2code_ext AS sic2,
-    acr.sic2desc_ext AS sic2_desc,
-    acr.sic4code_ext AS sic4,
-    acr.sic4desc_ext AS sic4_desc,
-    acr.naicscode_ext AS naics_code,
-    acr.naicsdesc_ext AS naics_desc,
-    policyline.wcmlineeachaccidentlim::varchar AS each_accident_limit,
-    policyline.wcmlinediseaseeachempllim::varchar AS disease_each_employee_limit,
-    policyline.wcmlinediseasepolicylim::varchar AS disease_policy_limit,
-    COALESCE(polloc_cnt.location_count, 1) AS location_count,
-    pp.totalcostrpt AS total_policy_premium,
-    pp.id AS policyperiod_id,
-    pp.publicid AS publicid,
-    pp.updatetime AS updatetime,
-    pp.periodstart AS periodstart,
-    pp.periodend AS periodend,
-    ROW_NUMBER() OVER (PARTITION BY pp.publicid ORDER BY CASE WHEN acr.sic2code_ext IS NOT NULL THEN 1 ELSE 0 END DESC, acr.updatetime DESC) AS row_num
-  FROM
-    pc10_replication.pc_policyperiod pp
-    JOIN pc10_replication.pc_policy pol ON pol.id = pp.policyid AND pol.productcode = 'WCMWorkersComp'
-    LEFT JOIN polperuw.polperuw polperuw ON pp.periodid = polperuw.periodid AND pp.branchnumber = polperuw.branchnumber AND pp.jobid = polperuw.jobid
-    JOIN pc10_replication.pc_policyline policyline ON policyline.branchid = pp.id
-    JOIN pc10_replication.pc_job job ON pp.jobid = job.id
-    LEFT JOIN pc10_replication.pctl_policysource_ext polsource ON polsource.id = pol.policysource_ext
-    LEFT JOIN pc10_replication.pc_jobpolicyperiod jpp ON pp.id = jpp.ownerid
-    JOIN pc10_replication.pctl_job jobsubtype ON job.subtype = jobsubtype.id
-    LEFT JOIN pc_acctholderedge_curation.pc_acctholderedge_curation ah ON pol.accountid = ah.ownerid
-    LEFT JOIN pc10_replication.pc_acctholderedge ahe ON ahe.id = ah.id
-    LEFT JOIN pc10_replication.pc_contact contact ON ahe.foreignentityid = contact.id
-    LEFT JOIN pc10_replication.pc_uwcompany uwcompany ON pp.uwcompany = uwcompany.id
-    JOIN pc10_replication.pc_account account ON pol.accountid = account.id
-    JOIN pc10_replication.pctl_policyperiodstatus ppstatus ON ppstatus.id = pp.status
-    LEFT JOIN pc10_replication.pctl_jurisdiction ppState ON pp.basestate = ppstate.id
-    JOIN pc10_replication.pc_contact con ON con.id = pp.pnicontactdenorm
-    JOIN pc10_replication.pc_accountcontact ac ON ac.contact = con.id
-    JOIN pc10_replication.pc_accountcontactrole acr ON acr.accountcontact = ac.id
-    LEFT JOIN pc10_replication.pctl_industry_ext indtyp ON indtyp.id = acr.industry_ext
-    LEFT JOIN pc10_replication.pc_producercode producercode ON pp.producercodeofrecordid = producercode.id
-    LEFT JOIN pc10_replication.pc_organization org ON producercode.organizationid = org.id
-    LEFT JOIN pc10_replication.pc_contact orgContact ON orgcontact.id = org.contactid
-    LEFT JOIN (
-      SELECT 
-        pl.branchid,
-        COALESCE(
-          NULLIF(COUNT(DISTINCT CASE WHEN pl.expirationdate IS NULL THEN pl.locationnum END), 0),
-          COUNT(DISTINCT pl.locationnum)
-        ) AS location_count
-      FROM pc10_replication.pc_policylocation pl
-      GROUP BY pl.branchid
-    ) polloc_cnt ON polloc_cnt.branchid = pp.id
-  ) rbd
-WHERE rbd.row_num = 1
-ORDER BY rbd.updatetime DESC;
+The error indicates that Git is attempting to route your request through a corporate proxy server at 10.119.144.212, but the connection timed out after 21 seconds because the proxy is unreachable or refusing connections from your Azure VDI.
+
+In Guidewire Cloud and corporate VDI setups, Bitbucket endpoints (like *.guidewire.net) often live on an internal network or private link that must bypass the proxy entirely.
+
+Step 1: Test Cloning with Proxy Bypassed
+Run the clone command by explicitly telling Git to ignore any configured proxy for this command:
+
+Bash
+git -c http.proxy="" -c https.proxy="" clone --filter=blob:none --single-branch -b release/r-4.8.0 https://bitbucket.axaxl.dev-1.us-east-1.guidewire.net/scm/axaxldev/policycenter.git
+
+If the clone starts immediately, the issue is that Git was forcing this traffic through 10.119.144.212.
+
+Step 2: Fix the Proxy Configuration Permanently
+If Step 1 worked, make the fix permanent depending on whether you need the proxy for other sites:
+
+Option A: Unset the proxy completely in Git (if your VDI connects to the internet/internal networks directly):
+
+
+Bash
+git config --global --unset http.proxy
+git config --global --unset https.proxy
+
+Check if a proxy was also set at the system level:
+
+
+Bash
+git config --system --unset http.proxy
+git config --system --unset https.proxy
+
+
+Option B: Bypass the proxy only for this Guidewire Bitbucket host (if you need the proxy for other repositories):
+
+
+Bash
+git config --global http."https://bitbucket.axaxl.dev-1.us-east-1.guidewire.net".proxy ""
+
+
+Option C: Check Windows/Bash Environment Variables:
+If Git continues using the proxy even after unsetting it, the proxy is set in your environment variables:
+
+
+Bash
+echo $http_proxy
+echo $https_proxy
+
+Temporarily clear them in Git Bash:
+
+
+Bash
+unset http_proxy
+unset https_proxy
+unset HTTP_PROXY
+unset HTTPS_PROXY
+
+Or add the domain to NO_PROXY:
+
+
+Bash
+export NO_PROXY="$NO_PROXY,.guidewire.net"
+
+
+Step 3: Verify Network & VPN Reachability
+If disabling the proxy results in a Could not resolve host or timeout:
+
+VPN / Zscaler Status: Ensure your corporate VPN (or Zscaler / GlobalProtect) is active inside or outside the VDI session as mandated by your project setup.
+
+DNS & Network Test: Test if the host is reachable directly without a proxy:
+
+
+Bash
+curl -Iv --noproxy "*" https://bitbucket.axaxl.dev-1.us-east-1.guidewire.net
+
+If this cannot reach the host or resolve DNS, access to the Guidewire AWS environment requires network routing/firewall approval via your team lead or an internal Silva ticket (as noted in the background document on your screen).
+
+Security & Authentication Note
+In your terminal, you previously entered:
+
+Bash
+git config --global user.password "BBDC-MTQwMTgx..."
+
+Git does not recognize user.password: Git does not use this key for authentication; it will be ignored.
+
+Plaintext exposure: This stores your Bitbucket personal access token (PAT) in plain text in your ~/.gitconfig file. Unset it by running:
+
+
+Bash
+git config --global --unset user.password
+
+
+Correct token authentication: When prompted for your Bitbucket password during git clone, provide the PAT (BBDC-...) as the password, or include your username in the URL:
+
+
+Bash
+git clone https://<your_bitbucket_username>@bitbucket.axaxl.dev-1.us-east-1.guidewire.net/scm/axaxldev/policycenter.git
+
+When Git asks for the password, paste the BBDC-... token.
