@@ -1,130 +1,38 @@
-Listed directory Guidewire%20reporting
-Viewed 20261014_113130.jpg:1-800
-Viewed 20261014_113145.jpg:1-800
-Viewed 20261014_113152.jpg:1-800
-Viewed 20261014_113159.jpg:1-800
-Viewed 20261014_113206.jpg:1-800
-Viewed 20261014_113211.jpg:1-800
-Viewed 20261014_113216.jpg:1-800
-Viewed 20261014_113409.jpg:1-800
-Viewed 20261014_113417.jpg:1-800
-Viewed 20261014_113426.jpg:1-800
-Viewed 20261014_113434.jpg:1-800
-Viewed 20261014_113451.jpg:1-800
-Viewed 20261014_113459.jpg:1-800
-Viewed 20261014_113514.jpg:1-800
-Viewed 20261014_113523.jpg:1-800
-
-Here is the complete analysis and guidance from a Guidewire & Data Studio/Reporting perspective, validating your points, explaining the underlying architecture, drafting the email, and highlighting key follow-up questions.
-
----
-
-### 1. Review & Validation of Point 1 (The 185+ Excel Columns)
-
-**You are completely right on your observation**, and there is a very specific technical reason why you are seeing this:
-
-1. **Why only columns J, K, L, M, O, P, Q, BE, BF, BG, BI, BK match directly:**
-   - These represent single-value, core entities at the Account/Policy level in PolicyCenter:
-     - **Account/Contact:** Account Name, Broker/Producer, Broker City, Broker State, Insured State.
-     - **Classification/Industry:** SIC, NAICS Sector/Subsector/Code (`IndustryCode`), Type of Business (ToB), ISO Dominant Subclass (`ClassCode`).
-     - **Basic Terms:** Attachment Point, Policy Number, Business Unit.
-2. **Why the remaining ~185 columns are NOT direct fields on PolicyCenter tables:**
-   - **Horizontal Pivot vs. Normalized Array (The Big Reason):**
-     If you inspect columns `BM` through `HF` in the Excel sheet, the spreadsheet repeats layer attributes across columns:
-     - `Layer 1`: Coverage Type, Occ Limit, Agg Limit, Attachment, SIR/Ded, Proposed Program Layer, Premium, Carrier.
-     - `Layer 2`: Repeated set of 10+ columns.
-     - `Layer 3` through `Layer 14` (Umbrella, 1st Excess, 2nd Excess, etc.): Repeated sets of columns.
-     - In **Guidewire PolicyCenter (Excess/Surplus & Commercial Lines)**, layers and underlying coverages are **never stored as flat horizontal columns** (like `LimitLayer1`, `LimitLayer2`). Instead, they are stored as **one-to-many child entity arrays** (e.g., `PolicyLine.Coverages`, `CoverageLayers`, or custom entities like `CoverageLayer_Ext` / `UnderlyingCoverage_Ext`).
-   - **Pricing/Actuarial Model vs. Guidewire System of Record:**
-     Many columns (such as `Below 1B`, `Below 75M Attach`, `Ded >= $250`, `MechPrem`, `RRL`, `Proposed Total Excess ProgramCarrier`) are underwriting workbook/pricing model fields. They were derived or keyed inside offline pricing models, not native OOTB PolicyCenter database fields.
-   - **Conclusion:** We must confirm with the BA/Business whether these fields are currently captured anywhere in the PolicyCenter UI, or if they are expecting fields that only exist in their external pricing tools.
-
----
-
-### 2. Review & Validation of Point 2 (Lauren Angelina's Email Reports)
-
-**You are correct here as well — these reports are standard and highly feasible** in Guidewire Data Studio / CDA / BI reporting compared to the massive Excel extract.
-
-Here is the breakdown by report:
-1. **Bound Not Booked Report:**
-   - **Feasibility:** **100% Feasible.**
-   - Fields (`Policy Number`, `Insured Name`, `Broker`, `Underwriter`, `Bound Date`, `Effective Date`, `Premium`, `NB vs Renewal`, `Status`) are standard fields on `PolicyPeriod` and `Job`.
-   - `Days bound but not booked` is a simple calculated metric in Data Studio: `DATEDIFF(Today, BoundDate)`.
-2. **Submission Report:**
-   - **Feasibility:** **100% Feasible.**
-   - All fields (Submission Status, Submission Date, Broker, Insured, SIC/NAICS, ToB, Limits, Quoted/Bound Premium) are standard across `Submission`, `PolicyPeriod`, and `ProducerCode`.
-3. **Broker Scorecards & Underwriter Production Reports:**
-   - **Feasibility:** **100% Feasible.**
-   - Aggregate metrics (Submission Count, Quote Count, Bind Count, Hit Ratio %, Written Premium) are standard aggregations calculated directly off the Submission dataset in Data Studio.
-4. **Renewal Rate Change Reporting:**
-   - **Feasibility:** **Feasible, but needs BA input on formulas.**
-   - The dimensions (Broker, Underwriter, Effective Month, State, SIC/NAICS, ToB) and term premiums are standard.
-   - *Clarification needed:* How business calculates **Weighted vs. Unweighted Rate Change** (the exact mathematical formula) and whether "Lead Carrier / Excess Position" is stored on the policy or in an external tool.
-
----
-
-### 3. Draft Email to Business & Product Stakeholders
-
-Here is a simple, professional, and clear draft to reply to the email thread (Marielle, Romit, Lauren, Ian, Jewel, etc.):
+Here is a clean, simplified email draft structured with your two specific points:
 
 ***
 
-**Subject:** RE: Guidewire Reporting – Initial Feasibility Analysis & Recommended Next Steps
+**Subject:** RE: Guidewire Reporting – Feasibility Analysis on Reports & Excel Attachment
 
 **Hi Marielle, Lauren, and Team,**
 
-Thank you for sharing the reporting requirements and the reference extract. We have completed an initial analysis of the requested reports and the Excel extract against the Guidewire PolicyCenter (GWPC) data model. 
-
-Here is our high-level summary and recommended next steps:
+We have completed the initial analysis of the reporting requirements and the attached reference spreadsheet against our Guidewire PolicyCenter (GWPC) data model. Below are the key findings:
 
 ---
 
-### 1. Standard Operational & Production Reports (From Lauren's Email) — **Highly Feasible**
-The reports outlined in Lauren's initial email are standard within Guidewire and can be built in Guidewire Data Studio:
-* **Bound Not Booked Report:** Direct data fields are readily available in GWPC (Policy #, Insured, Broker, Underwriter, Bound Date, Premium, etc.). Aging/days bound can be calculated directly in the reporting tool.
-* **Submission Activity Report:** Standard lifecycle data (Submission Date, Statuses, Decline Reasons, Broker, NAICS/SIC, Limits, Premium) are directly captured in GWPC.
-* **Broker Scorecards & Underwriter Production Reports:** Metrics such as Submission Count, Quote Count, Bind Count, and Hit Ratios can be aggregated directly from the submission data.
-* **Renewal Rate Change Report:** Feasible, though we will need the BA/Business team to confirm the exact mathematical formulas for **Weighted and Unweighted Rate Change**, as well as where Lead Carrier/Position is captured.
+### 1. Attachment: *UW Assignments LC + MM Excess Accounts List* – Follow-up & Calls Needed
+* **Current Status:** Out of the 200+ columns in this sheet, only about **15 fields** (such as Account #, Account Name, Broker, Broker City/State, Insured State, Attachment Point, SIC/NAICS Code & Description, and Type of Business) are present as direct fields in the PolicyCenter codebase.
+* **Why Follow-up is Needed:** The remaining **185+ columns** are not direct single fields in PolicyCenter. A large number of these appear to be coverage layers (Layers 1 through 14+) flattened across columns, or specific pricing/actuarial model fields. 
+* **Next Step:** We will need a call with the Business and BA to review these 185+ fields, confirm if and where they are captured in Guidewire, and identify the exact field names or mappings required.
 
 ---
 
-### 2. Portfolio Export / Inforce Extract (~200 Column Sheet) — **Needs Working Session**
-When analyzing the attached spreadsheet (*UW Assignments LC + MM Excess Accounts List*), we identified key differences between the spreadsheet structure and the Guidewire data model:
-* **Direct Account & Classification Fields Match:** Standard fields like Account Name, Policy Number, Broker Name/City/State, Insured State, SIC/NAICS, and Type of Business (ToB) align directly with GWPC fields.
-* **Layer/Program Structure Flattening:** A large portion of the 185+ remaining columns represent coverage layers (e.g., Layer 1 through Layer 14+ for Umbrella, Auto, GL, Excess) flattened side-by-side in Excel. In Guidewire, these are stored in multi-record arrays rather than flat single columns.
-* **Pricing & External Tool Fields:** Several columns (such as specific underwriting bucket flags, mechanical pricing metrics, and proposed competitor quotes) appear to originate from offline pricing/actuarial models rather than core Guidewire screens.
+### 2. Reports Outlined in Lauren's Email – Fairly Doable
+All other reports requested by Lauren in her initial email are standard and **fairly doable** in Guidewire Data Studio with minimal guidance from the BA:
+* **Bound Not Booked Report:** Direct and doable (all required fields like Policy #, Insured, Broker, Underwriter, Bound Date, and Premium exist directly in GWPC).
+* **Submission Report:** Direct and doable (captures all submission statuses, dates, insured/broker details, and limits directly from standard GWPC data).
+* **Renewal Rate Change Report:** Doable (dimensions and premiums are directly available; we just need the BA to confirm the exact formula for weighted/unweighted rate change).
+* **Broker Scorecards & Underwriter Production Reports:** Direct and doable (metrics like submission count, quote count, bind count, and hit ratios can be aggregated directly from the submission dataset).
 
 ---
 
-### Proposed Next Steps:
-To ensure we capture the right data without assumptions, we would like to schedule a **30-minute alignment call** with the BA and Underwriting SME (Lauren/Ian) to:
-1. Walk through the 185+ columns in the extract to confirm which fields are actively entered into Guidewire vs. which remain in external pricing spreadsheets.
-2. Confirm the exact business formulas for rate changes and the desired grain of the export (e.g., one row per policy vs. one row per layer).
-3. Prioritize quick wins (e.g., delivering the Submission and Bound-Not-Booked reports first while mapping the detailed layer export).
+### Next Step
+Since the reports in **Point 2** are straightforward and ready to proceed, we would like to schedule a **short call with the Business / BA** primarily to discuss **Point 1** and determine the mapping and next course of action for the Excel sheet fields.
 
-Please let us know your availability in the coming days so we can send out an invite.
+Please let us know suitable times for this week to set up the call.
 
 Thanks and regards,  
 **Azeez Mohiuddin**  
 Integrations & Reporting Team
 
 ***
-
----
-
-### 4. Important Follow-up Points / Things to Consider
-
-Here are additional questions and edge cases you should keep in your back pocket or bring up during the alignment call:
-
-1. **System of Record (Guidewire vs. Pricing Tools):**
-   - *Question for Business:* Are underwriters actively typing all layer details (Layers 1–14, Carrier, Premium, SIR, Attachment) into Guidewire screens today? If a field is not entered into Guidewire, Data Studio cannot extract it unless an integration exists with the pricing tool.
-2. **Report Grain (Row-per-Policy vs. Row-per-Layer):**
-   - In Excel, they have 1 row per account and 200+ columns across.
-   - In Data Studio / BI, reports are much cleaner when structured as **1 row per layer** (e.g., Account `X` has 3 rows: Layer 1, Layer 2, Layer 3). Would this tabular format satisfy their portfolio export needs?
-3. **Data Studio vs. Excel Export:**
-   - Lauren noted: *"my biggest ask would be that any field captured within Guidewire be made available for export/reporting... The more granular the data export, the more flexible we'll be"*.
-   - Does business want an interactive visual dashboard in Data Studio, or a scheduled automated CSV/Excel data dump to an S3/SharePoint folder for offline slicing?
-4. **Custom Extension Fields (`*_Ext`):**
-   - If business confirms certain fields in the extract *must* be in Guidewire, the PC Dev team will need to create custom data model extensions (`.eti`/`.etx`) and expose them in the UI before they can flow into Data Studio/CDA.
-5. **Historical Data Scope:**
-   - Are these reports expected to run only on newly bound policies since Guidewire Go-Live, or do they expect historical converted/migrated policies from legacy systems as well?
