@@ -1,96 +1,81 @@
-The error indicates that Git is attempting to route your request through a corporate proxy server at 10.119.144.212, but the connection timed out after 21 seconds because the proxy is unreachable or refusing connections from your Azure VDI.
+1. Review & Validation of Point 1 (The 185+ Excel Columns)
+You are completely right on your observation, and there is a very specific technical reason why you are seeing this:
+Why only columns J, K, L, M, O, P, Q, BE, BF, BG, BI, BK match directly:
+These represent single-value, core entities at the Account/Policy level in PolicyCenter:
+Account/Contact: Account Name, Broker/Producer, Broker City, Broker State, Insured State.
+Classification/Industry: SIC, NAICS Sector/Subsector/Code (IndustryCode), Type of Business (ToB), ISO Dominant Subclass (ClassCode).
+Basic Terms: Attachment Point, Policy Number, Business Unit.
+Why the remaining ~185 columns are NOT direct fields on PolicyCenter tables:
+Horizontal Pivot vs. Normalized Array (The Big Reason): If you inspect columns BM through HF in the Excel sheet, the spreadsheet repeats layer attributes across columns:
+Layer 1: Coverage Type, Occ Limit, Agg Limit, Attachment, SIR/Ded, Proposed Program Layer, Premium, Carrier.
+Layer 2: Repeated set of 10+ columns.
+Layer 3 through Layer 14 (Umbrella, 1st Excess, 2nd Excess, etc.): Repeated sets of columns.
+In Guidewire PolicyCenter (Excess/Surplus & Commercial Lines), layers and underlying coverages are never stored as flat horizontal columns (like LimitLayer1, LimitLayer2). Instead, they are stored as one-to-many child entity arrays (e.g., PolicyLine.Coverages, CoverageLayers, or custom entities like CoverageLayer_Ext / UnderlyingCoverage_Ext).
+Pricing/Actuarial Model vs. Guidewire System of Record: Many columns (such as Below 1B, Below 75M Attach, Ded >= $250, MechPrem, RRL, Proposed Total Excess ProgramCarrier) are underwriting workbook/pricing model fields. They were derived or keyed inside offline pricing models, not native OOTB PolicyCenter database fields.
+Conclusion: We must confirm with the BA/Business whether these fields are currently captured anywhere in the PolicyCenter UI, or if they are expecting fields that only exist in their external pricing tools.
 
-In Guidewire Cloud and corporate VDI setups, Bitbucket endpoints (like *.guidewire.net) often live on an internal network or private link that must bypass the proxy entirely.
+2. Review & Validation of Point 2 (Lauren Angelina's Email Reports)
+You are correct here as well — these reports are standard and highly feasible in Guidewire Data Studio / CDA / BI reporting compared to the massive Excel extract.
+Here is the breakdown by report:
+Bound Not Booked Report:
+Feasibility: 100% Feasible.
+Fields (Policy Number, Insured Name, Broker, Underwriter, Bound Date, Effective Date, Premium, NB vs Renewal, Status) are standard fields on PolicyPeriod and Job.
+Days bound but not booked is a simple calculated metric in Data Studio: DATEDIFF(Today, BoundDate).
+Submission Report:
+Feasibility: 100% Feasible.
+All fields (Submission Status, Submission Date, Broker, Insured, SIC/NAICS, ToB, Limits, Quoted/Bound Premium) are standard across Submission, PolicyPeriod, and ProducerCode.
+Broker Scorecards & Underwriter Production Reports:
+Feasibility: 100% Feasible.
+Aggregate metrics (Submission Count, Quote Count, Bind Count, Hit Ratio %, Written Premium) are standard aggregations calculated directly off the Submission dataset in Data Studio.
+Renewal Rate Change Reporting:
+Feasibility: Feasible, but needs BA input on formulas.
+The dimensions (Broker, Underwriter, Effective Month, State, SIC/NAICS, ToB) and term premiums are standard.
+Clarification needed: How business calculates Weighted vs. Unweighted Rate Change (the exact mathematical formula) and whether "Lead Carrier / Excess Position" is stored on the policy or in an external tool.
 
-Step 1: Test Cloning with Proxy Bypassed
-Run the clone command by explicitly telling Git to ignore any configured proxy for this command:
+3. Draft Email to Business & Product Stakeholders
+Here is a simple, professional, and clear draft to reply to the email thread (Marielle, Romit, Lauren, Ian, Jewel, etc.):
 
-Bash
-git -c http.proxy="" -c https.proxy="" clone --filter=blob:none --single-branch -b release/r-4.8.0 https://bitbucket.axaxl.dev-1.us-east-1.guidewire.net/scm/axaxldev/policycenter.git
+Subject: RE: Guidewire Reporting – Initial Feasibility Analysis & Recommended Next Steps
+Hi Marielle, Lauren, and Team,
+Thank you for sharing the reporting requirements and the reference extract. We have completed an initial analysis of the requested reports and the Excel extract against the Guidewire PolicyCenter (GWPC) data model.
+Here is our high-level summary and recommended next steps:
 
-If the clone starts immediately, the issue is that Git was forcing this traffic through 10.119.144.212.
+1. Standard Operational & Production Reports (From Lauren's Email) — Highly Feasible
+The reports outlined in Lauren's initial email are standard within Guidewire and can be built in Guidewire Data Studio:
+Bound Not Booked Report: Direct data fields are readily available in GWPC (Policy #, Insured, Broker, Underwriter, Bound Date, Premium, etc.). Aging/days bound can be calculated directly in the reporting tool.
+Submission Activity Report: Standard lifecycle data (Submission Date, Statuses, Decline Reasons, Broker, NAICS/SIC, Limits, Premium) are directly captured in GWPC.
+Broker Scorecards & Underwriter Production Reports: Metrics such as Submission Count, Quote Count, Bind Count, and Hit Ratios can be aggregated directly from the submission data.
+Renewal Rate Change Report: Feasible, though we will need the BA/Business team to confirm the exact mathematical formulas for Weighted and Unweighted Rate Change, as well as where Lead Carrier/Position is captured.
 
-Step 2: Fix the Proxy Configuration Permanently
-If Step 1 worked, make the fix permanent depending on whether you need the proxy for other sites:
+2. Portfolio Export / Inforce Extract (~200 Column Sheet) — Needs Working Session
+When analyzing the attached spreadsheet (UW Assignments LC + MM Excess Accounts List), we identified key differences between the spreadsheet structure and the Guidewire data model:
+Direct Account & Classification Fields Match: Standard fields like Account Name, Policy Number, Broker Name/City/State, Insured State, SIC/NAICS, and Type of Business (ToB) align directly with GWPC fields.
+Layer/Program Structure Flattening: A large portion of the 185+ remaining columns represent coverage layers (e.g., Layer 1 through Layer 14+ for Umbrella, Auto, GL, Excess) flattened side-by-side in Excel. In Guidewire, these are stored in multi-record arrays rather than flat single columns.
+Pricing & External Tool Fields: Several columns (such as specific underwriting bucket flags, mechanical pricing metrics, and proposed competitor quotes) appear to originate from offline pricing/actuarial models rather than core Guidewire screens.
 
-Option A: Unset the proxy completely in Git (if your VDI connects to the internet/internal networks directly):
+Proposed Next Steps:
+To ensure we capture the right data without assumptions, we would like to schedule a 30-minute alignment call with the BA and Underwriting SME (Lauren/Ian) to:
+Walk through the 185+ columns in the extract to confirm which fields are actively entered into Guidewire vs. which remain in external pricing spreadsheets.
+Confirm the exact business formulas for rate changes and the desired grain of the export (e.g., one row per policy vs. one row per layer).
+Prioritize quick wins (e.g., delivering the Submission and Bound-Not-Booked reports first while mapping the detailed layer export).
+Please let us know your availability in the coming days so we can send out an invite.
+Thanks and regards,
+Azeez Mohiuddin
+Integrations & Reporting Team
 
+4. Important Follow-up Points / Things to Consider
+Here are additional questions and edge cases you should keep in your back pocket or bring up during the alignment call:
+System of Record (Guidewire vs. Pricing Tools):
+Question for Business: Are underwriters actively typing all layer details (Layers 1–14, Carrier, Premium, SIR, Attachment) into Guidewire screens today? If a field is not entered into Guidewire, Data Studio cannot extract it unless an integration exists with the pricing tool.
+Report Grain (Row-per-Policy vs. Row-per-Layer):
+In Excel, they have 1 row per account and 200+ columns across.
+In Data Studio / BI, reports are much cleaner when structured as 1 row per layer (e.g., Account X has 3 rows: Layer 1, Layer 2, Layer 3). Would this tabular format satisfy their portfolio export needs?
+Data Studio vs. Excel Export:
+Lauren noted: "my biggest ask would be that any field captured within Guidewire be made available for export/reporting... The more granular the data export, the more flexible we'll be".
+Does business want an interactive visual dashboard in Data Studio, or a scheduled automated CSV/Excel data dump to an S3/SharePoint folder for offline slicing?
+Custom Extension Fields (*_Ext):
+If business confirms certain fields in the extract must be in Guidewire, the PC Dev team will need to create custom data model extensions (.eti/.etx) and expose them in the UI before they can flow into Data Studio/CDA.
+Historical Data Scope:
+Are these reports expected to run only on newly bound policies since Guidewire Go-Live, or do they expect historical converted/migrated policies from legacy systems as well?
+12:03 PM
 
-Bash
-git config --global --unset http.proxy
-git config --global --unset https.proxy
-
-Check if a proxy was also set at the system level:
-
-
-Bash
-git config --system --unset http.proxy
-git config --system --unset https.proxy
-
-
-Option B: Bypass the proxy only for this Guidewire Bitbucket host (if you need the proxy for other repositories):
-
-
-Bash
-git config --global http."https://bitbucket.axaxl.dev-1.us-east-1.guidewire.net".proxy ""
-
-
-Option C: Check Windows/Bash Environment Variables:
-If Git continues using the proxy even after unsetting it, the proxy is set in your environment variables:
-
-
-Bash
-echo $http_proxy
-echo $https_proxy
-
-Temporarily clear them in Git Bash:
-
-
-Bash
-unset http_proxy
-unset https_proxy
-unset HTTP_PROXY
-unset HTTPS_PROXY
-
-Or add the domain to NO_PROXY:
-
-
-Bash
-export NO_PROXY="$NO_PROXY,.guidewire.net"
-
-
-Step 3: Verify Network & VPN Reachability
-If disabling the proxy results in a Could not resolve host or timeout:
-
-VPN / Zscaler Status: Ensure your corporate VPN (or Zscaler / GlobalProtect) is active inside or outside the VDI session as mandated by your project setup.
-
-DNS & Network Test: Test if the host is reachable directly without a proxy:
-
-
-Bash
-curl -Iv --noproxy "*" https://bitbucket.axaxl.dev-1.us-east-1.guidewire.net
-
-If this cannot reach the host or resolve DNS, access to the Guidewire AWS environment requires network routing/firewall approval via your team lead or an internal Silva ticket (as noted in the background document on your screen).
-
-Security & Authentication Note
-In your terminal, you previously entered:
-
-Bash
-git config --global user.password "BBDC-MTQwMTgx..."
-
-Git does not recognize user.password: Git does not use this key for authentication; it will be ignored.
-
-Plaintext exposure: This stores your Bitbucket personal access token (PAT) in plain text in your ~/.gitconfig file. Unset it by running:
-
-
-Bash
-git config --global --unset user.password
-
-
-Correct token authentication: When prompted for your Bitbucket password during git clone, provide the PAT (BBDC-...) as the password, or include your username in the URL:
-
-
-Bash
-git clone https://<your_bitbucket_username>@bitbucket.axaxl.dev-1.us-east-1.guidewire.net/scm/axaxldev/policycenter.git
-
-When Git asks for the password, paste the BBDC-... token.
